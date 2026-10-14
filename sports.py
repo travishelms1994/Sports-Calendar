@@ -78,6 +78,8 @@ COLLEGE_FOOTBALL_PLAYOFF = True
 # (ESPN conference ids: ACC 1, Big 12 4, Big Ten 5, SEC 8).
 P4_BOWLS = True
 P4_CONFERENCES = ("1", "4", "5", "8")
+# Regular-season games between two Power Four teams played on any day but Saturday.
+P4_NON_SATURDAY = True
 
 # College games always included, ranked or not (ESPN team ids). TCU's own games
 # come from TCU's feed, so TCU is left out here.
@@ -434,6 +436,36 @@ def top25_matchups(league, season, label, hours, rivalries=()):
     return events
 
 
+def p4_non_saturday(league):
+    """Remaining regular-season Power Four vs Power Four games not played on a Saturday."""
+    events = []
+    current = fetch_json(f"{ESPN}/{league}/scoreboard?groups=80&limit=300")
+    calendar = (current.get("leagues") or [{}])[0].get("calendar", [])
+    regular = next((c for c in calendar if c.get("label") == "Regular Season"), {})
+    weeks = [int(w["value"]) for w in regular.get("entries", [])]
+    this_week = (current.get("week") or {}).get("number", 1)
+    if (current.get("season") or {}).get("type") != 2:
+        return events  # regular season is over
+    polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
+    ap = next((p for p in polls if p.get("name") == "AP Top 25"), {})
+    ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    for week in [w for w in weeks if w >= this_week]:
+        data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=2&week={week}"
+                          f"&dates={nfl_season()}&groups=80&limit=300")
+        for ev in data.get("events", []):
+            comp = ev["competitions"][0]
+            confs = [(c.get("team") or {}).get("conferenceId") for c in comp.get("competitors", [])]
+            day = game_day(ev)
+            if (day.weekday() == 5 or day < TODAY or len(confs) != 2
+                    or not all(c in P4_CONFERENCES for c in confs) or _involves_tcu(ev)):
+                continue
+            for c in comp["competitors"]:  # this week's AP ranks
+                c["curatedRank"] = {"current": ranks.get(c["team"]["id"], 99)}
+            events.append(espn_event(ev, league, hours=3.5, category="Top 25",
+                                     rank=True, use_location=True))
+    return events
+
+
 def college_football():
     events = []
     league = "football/college-football"
@@ -453,6 +485,8 @@ def college_football():
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
         events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES)
+    if P4_NON_SATURDAY:
+        events += p4_non_saturday(league)
     if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=3&week=1&dates={nfl_season()}&limit=100")
         for ev in data.get("events", []):
