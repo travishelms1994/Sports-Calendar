@@ -123,8 +123,11 @@ TENNIS_SLAMS = [
 # (name, first day, last day, notes)
 OTHER_BANNERS = [
     # Drafts 2027
-    ("NFL Draft", date(2027, 4, 29), date(2027, 5, 1), "National Mall, Washington, D.C."),
-    ("NBA Draft (date not yet confirmed)", date(2027, 6, 24), None, ""),
+    ("NFL Draft Round 1", date(2027, 4, 29), None, "National Mall, Washington, D.C."),
+    ("NFL Draft Rounds 2-3", date(2027, 4, 30), None, "National Mall, Washington, D.C."),
+    ("NFL Draft Rounds 4-7", date(2027, 5, 1), None, "National Mall, Washington, D.C."),
+    ("NBA Draft Round 1 (date not yet confirmed)", date(2027, 6, 24), None, ""),
+    ("NBA Draft Round 2 (date not yet confirmed)", date(2027, 6, 25), None, ""),
     # March Madness 2027 (men's)
     ("March Madness: First Four", date(2027, 3, 16), date(2027, 3, 17), "Dayton, OH"),
     ("March Madness: Round of 64", date(2027, 3, 18), date(2027, 3, 19), ""),
@@ -499,7 +502,8 @@ def college_baseball_postseason():
             label = note.replace("Men's College World Series", "CWS").replace(" - ", " ")
         else:
             continue
-        matchup = _matchup(ev["competitions"][0], use_location=True)[0]
+        # rank=True shows national seeds (#1-16), e.g. "USC @ #5 North Carolina"
+        matchup = _matchup(ev["competitions"][0], rank=True, use_location=True)[0]
         title = label if "TBD" in matchup else f"{label}: {matchup}"
         events.append(espn_event(ev, league, title, 3.0, "College Baseball"))
     return events
