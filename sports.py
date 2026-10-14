@@ -69,16 +69,17 @@ GOLF_EVENTS = {
     "Ryder Cup": "Ryder Cup",
 }
 
-# Tennis: all-day banners for each Grand Slam, plus men's singles matches
-# from these rounds on. ESPN doesn't publish future Slam dates, so ADD NEXT
-# YEAR'S DATES HERE once they're announced. (name, first day, last day)
+# Tennis: all-day banners for each Grand Slam from the first day of the men's
+# round of 16 through the men's final, plus men's singles matches from those
+# rounds. ESPN doesn't publish future Slam dates, so ADD NEXT YEAR'S DATES HERE
+# once they're announced. (name, first day of men's R16, men's final)
 TENNIS_ROUNDS = ("Round 4", "Quarterfinal", "Semifinal", "Final")
 TENNIS_DRAW = "Men's Singles"
 TENNIS_SLAMS = [
-    ("Australian Open", date(2027, 1, 17), date(2027, 1, 31)),
-    ("French Open", date(2027, 5, 23), date(2027, 6, 6)),
-    ("Wimbledon", date(2027, 6, 28), date(2027, 7, 11)),
-    ("US Open (Tennis)", date(2027, 8, 29), date(2027, 9, 12)),
+    ("Australian Open", date(2027, 1, 24), date(2027, 1, 31)),
+    ("French Open", date(2027, 5, 30), date(2027, 6, 6)),
+    ("Wimbledon", date(2027, 7, 4), date(2027, 7, 11)),
+    ("US Open (Tennis)", date(2027, 9, 5), date(2027, 9, 12)),
 ]
 
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
@@ -116,12 +117,12 @@ EMOJI = {
     "TCU Basketball": "\U0001F438\U0001F3C0",
     "TCU Baseball": "\U0001F438⚾",
     "Rockets": "\U0001F680",            # rocket
-    "Texans": "\U0001F920",             # cowboy
+    "Texans": "\U0001F402",             # bull
     "Astros": "⭐",                 # star
     "NFL": "\U0001F3C8",                # football
     "Top 25": "\U0001F393\U0001F3C8",   # graduation cap = college
     "Conference Title": "\U0001F393\U0001F3C8",
-    "CFP": "\U0001F3C6",                # trophy
+    "CFP": "\U0001F393\U0001F3C6",      # graduation cap + trophy
     "NFL Playoffs": "\U0001F3C8\U0001F3C5",    # ball + medal = pro playoffs
     "MLB Playoffs": "⚾\U0001F3C5",
     "NBA Playoffs": "\U0001F3C0\U0001F3C5",
@@ -489,7 +490,8 @@ def tennis():
     for name, first, last in TENNIS_SLAMS:
         events.append(Event(uid=f"tennis-{name}-{first.year}".replace(" ", "-"),
                             title=name, start=first, end=last, categories=["Tennis"]))
-        if not (first - timedelta(days=1) <= TODAY <= last + timedelta(days=1)):
+        # Round-of-16 pairings and times get posted a day or two ahead.
+        if not (first - timedelta(days=3) <= TODAY <= last + timedelta(days=1)):
             continue
         # During a Slam: add the matches from the round of 16 on.
         data = fetch_json(f"{ESPN}/tennis/atp/scoreboard?dates={TODAY:%Y%m%d}")
