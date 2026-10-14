@@ -79,9 +79,11 @@ COLLEGE_FOOTBALL_PLAYOFF = True
 P4_BOWLS = True
 P4_CONFERENCES = ("1", "4", "5", "8")
 P4_EXTRA_TEAMS = ("87",)   # Notre Dame (independent) counts as Power Four
-# Regular-season games between two Power Four teams played on any day but Saturday,
-# up until Thanksgiving week (Black Friday is treated like a normal Saturday).
+# Regular-season games between two Power Four teams played on any day but Saturday
+# (Thursday/Friday nights, Black Friday, etc.), plus an all-day
+# "College Football Week N" banner on each Saturday.
 P4_NON_SATURDAY = True
+CFB_WEEK_BANNERS = True
 
 # College games always included, ranked or not (ESPN team ids). TCU's own games
 # come from TCU's feed, so TCU is left out here.
@@ -445,7 +447,8 @@ def _both_p4(comp):
 
 
 def p4_non_saturday(league):
-    """Remaining regular-season Power Four vs Power Four games not played on a Saturday."""
+    """Remaining regular-season Power Four vs Power Four games not played on a Saturday,
+    plus a "College Football Week N" banner on each Saturday."""
     events = []
     current = fetch_json(f"{ESPN}/{league}/scoreboard?groups=80&limit=300")
     calendar = (current.get("leagues") or [{}])[0].get("calendar", [])
@@ -457,18 +460,19 @@ def p4_non_saturday(league):
     polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
     ap = next((p for p in polls if p.get("name") == "AP Top 25"), {})
     ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
-    # Thanksgiving is the 4th Thursday of November; stop at the Monday of that week.
-    nov1 = date(nfl_season(), 11, 1)
-    thanksgiving = nov1 + timedelta(days=(3 - nov1.weekday()) % 7 + 21)
-    cutoff = thanksgiving - timedelta(days=3)
+    if CFB_WEEK_BANNERS:
+        for entry in regular.get("entries", []):
+            saturday = central_date(parse_espn_date(entry["startDate"])) + timedelta(days=5)
+            events.append(Event(uid=f"cfb-week-{nfl_season()}-{entry['value']}",
+                                title=f"College Football {entry['label']}",
+                                start=saturday, categories=["Top 25"]))
     for week in [w for w in weeks if w >= this_week]:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=2&week={week}"
                           f"&dates={nfl_season()}&groups=80&limit=300")
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             day = game_day(ev)
-            if (day.weekday() == 5 or day < TODAY or day >= cutoff
-                    or not _both_p4(comp) or _involves_tcu(ev)):
+            if day.weekday() == 5 or day < TODAY or not _both_p4(comp) or _involves_tcu(ev):
                 continue
             for c in comp["competitors"]:  # this week's AP ranks
                 c["curatedRank"] = {"current": ranks.get(c["team"]["id"], 99)}
