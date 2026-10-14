@@ -74,6 +74,10 @@ MARCH_MADNESS_GAMES = True
 CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
 CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
 COLLEGE_FOOTBALL_PLAYOFF = True
+# Non-CFP bowl games where both teams are from a Power Four conference
+# (ESPN conference ids: ACC 1, Big 12 4, Big Ten 5, SEC 8).
+P4_BOWLS = True
+P4_CONFERENCES = ("1", "4", "5", "8")
 
 # College games always included, ranked or not (ESPN team ids). TCU's own games
 # come from TCU's feed, so TCU is left out here.
@@ -177,6 +181,7 @@ EMOJI = {
     "NBA": "\U0001F3C0",                # basketball
     "Top 25": "\U0001F393\U0001F3C8",   # graduation cap = college
     "Conference Title": "\U0001F393\U0001F3C8",
+    "Bowl": "\U0001F393\U0001F3C8",
     "CFP": "\U0001F393\U0001F3C6",      # graduation cap + trophy
     "NFL Playoffs": "\U0001F3C8\U0001F3C5",    # ball + medal = pro playoffs
     "MLB Playoffs": "⚾\U0001F3C5",
@@ -448,11 +453,21 @@ def college_football():
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
         events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES)
-    if COLLEGE_FOOTBALL_PLAYOFF:
+    if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=3&week=1&dates={nfl_season()}&limit=100")
         for ev in data.get("events", []):
-            note = _note(ev["competitions"][0])
+            comp = ev["competitions"][0]
+            note = _note(comp)
             if "College Football Playoff" not in note:
+                # Other bowls: only when both teams are set and both are Power Four
+                confs = [(c.get("team") or {}).get("conferenceId") for c in comp.get("competitors", [])]
+                if (P4_BOWLS and "Bowl" in note and len(confs) == 2
+                        and all(c in P4_CONFERENCES for c in confs) and not _involves_tcu(ev)):
+                    bowl = re.sub(r"\s+Presented by.*$", "", note, flags=re.I)
+                    matchup = _matchup(comp, rank=True, use_location=True)[0].replace(" @ ", " vs ")
+                    events.append(espn_event(ev, league, f"{bowl}: {matchup}", 3.5, "Bowl"))
+                continue
+            if not COLLEGE_FOOTBALL_PLAYOFF:
                 continue
             note = (note.replace("College Football Playoff", "CFP")
                         .replace(" at the ", " – "))
