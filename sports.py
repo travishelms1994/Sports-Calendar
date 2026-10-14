@@ -88,6 +88,9 @@ CBB_RIVALRIES = [
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
+# College baseball: every Super Regional and College World Series game.
+COLLEGE_BASEBALL_POSTSEASON = True
+
 # MLB postseason: every game (Wild Card, Division Series, LCS, World Series).
 MLB_PLAYOFFS = True
 MLB_ROUND_NAMES = {"ALWC": "AL Wild Card", "NLWC": "NL Wild Card"}
@@ -117,8 +120,11 @@ TENNIS_SLAMS = [
 ]
 
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
-# (name, first day, last day, location)
+# (name, first day, last day, notes)
 OTHER_BANNERS = [
+    # Drafts 2027
+    ("NFL Draft", date(2027, 4, 29), date(2027, 5, 1), "National Mall, Washington, D.C."),
+    ("NBA Draft (date not yet confirmed)", date(2027, 6, 24), None, ""),
     # March Madness 2027 (men's)
     ("March Madness: First Four", date(2027, 3, 16), date(2027, 3, 17), "Dayton, OH"),
     ("March Madness: Round of 64", date(2027, 3, 18), date(2027, 3, 19), ""),
@@ -165,6 +171,7 @@ EMOJI = {
     "CBB Top 25": "\U0001F393\U0001F3C0",
     "Conf Tournament": "\U0001F393\U0001F3C0",
     "March Madness": "\U0001F393\U0001F3C0",
+    "College Baseball": "\U0001F393⚾",   # graduation cap + baseball
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
@@ -177,7 +184,8 @@ KEEP_PAST_DAYS = 1
 # =============================================================== sources
 
 ESPN = "https://site.api.espn.com/apis/site/v2/sports"
-TCU_ESPN_ID = "2628"  # TCU in ESPN college football; its games come from TCU's own feed
+# TCU's ESPN ids (football/basketball, baseball); its games come from TCU's own feed
+TCU_ESPN_IDS = ("2628", "198")
 NOW = datetime.now(timezone.utc)
 TODAY = central_date(NOW)
 
@@ -372,7 +380,7 @@ def nfl_games():
 
 
 def _involves_tcu(ev):
-    return any((c.get("team") or {}).get("id") == TCU_ESPN_ID
+    return any((c.get("team") or {}).get("id") in TCU_ESPN_IDS
                for c in ev["competitions"][0].get("competitors", []))
 
 
@@ -467,6 +475,33 @@ def mlb_postseason():
         matchup = espn_matchup_title(ev)
         title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
         events.append(espn_event(ev, "baseball/mlb", title, 3.0, "MLB Playoffs"))
+    return events
+
+
+def college_baseball_postseason():
+    """Every Super Regional and Men's College World Series game."""
+    events = []
+    if not COLLEGE_BASEBALL_POSTSEASON:
+        return events
+    league = "baseball/college-baseball"
+    year = TODAY.year
+    for ev in _scoreboard_days(league, date(year, 6, 1), date(year, 6, 30), "&limit=200"):
+        if _involves_tcu(ev):
+            continue  # TCU's own feed has these
+        note = _note(ev["competitions"][0])
+        # "NCAA Baseball Championship - Austin Super Regional - Game 1"
+        # (but not "... - Atlanta Regional - Oklahoma advances to Super Regional")
+        parts = note.split(" - ")[1:]
+        if parts and parts[0].endswith("Super Regional"):
+            label = " ".join(parts)
+        elif "College World Series" in note:
+            # "Men's College World Series Championship Final - Game 1" -> "CWS Championship Final Game 1"
+            label = note.replace("Men's College World Series", "CWS").replace(" - ", " ")
+        else:
+            continue
+        matchup = _matchup(ev["competitions"][0], use_location=True)[0]
+        title = label if "TBD" in matchup else f"{label}: {matchup}"
+        events.append(espn_event(ev, league, title, 3.0, "College Baseball"))
     return events
 
 
@@ -635,10 +670,17 @@ def tennis():
 
 
 def other_banners():
-    return [Event(uid=f"banner-{name}-{first.year}".replace(" ", "-"), title=name,
+    def category(name):
+        for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness")):
+            if key in name:
+                return cat
+        return "Conf Tournament"
+
+    tv = {"NFL": "ESPN · ABC · NFL Network", "NBA": "ABC · ESPN"}
+    return [Event(uid=f"banner-{name.split(' (')[0]}-{first.year}".replace(" ", "-"), title=name,
                   start=first, end=last, description=where,
-                  categories=["Olympics" if "Olympics" in name else
-                              "March Madness" if "March Madness" in name else "Conf Tournament"])
+                  location=tv_label([tv[category(name)]]) if category(name) in tv else "",
+                  categories=[category(name)])
             for name, first, last, where in OTHER_BANNERS]
 
 
@@ -652,7 +694,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, college_basketball, tcu_games, golf_banners, tennis, other_banners]
+               march_basketball, college_basketball, college_baseball_postseason, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
