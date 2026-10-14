@@ -153,6 +153,10 @@ def write_ics(path, events, calendar_name, description=""):
             lines.append("TRANSP:TRANSPARENT")  # banners don't block your time
         else:
             end = e.end or e.start + timedelta(hours=e.duration_hours)
+            # Late games end at 11:59 PM Central so they don't spill onto the next day.
+            local_start = e.start.astimezone(CENTRAL)
+            day_end = local_start.replace(hour=23, minute=59, second=0, microsecond=0)
+            end = min(end, day_end) if day_end > local_start else end
             lines.append(f"DTSTART:{_utc(e.start)}")
             lines.append(f"DTEND:{_utc(end)}")
         lines.append(f"SUMMARY:{_escape(e.title)}")
