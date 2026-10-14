@@ -108,8 +108,6 @@ OTHER_BANNERS = [
     ("Big Ten Tournament: Quarterfinals", date(2027, 3, 12), None, "Gainbridge Fieldhouse, Indianapolis"),
     ("Big Ten Tournament: Semifinals", date(2027, 3, 13), None, "Gainbridge Fieldhouse, Indianapolis"),
     ("Big Ten Tournament: Championship", date(2027, 3, 14), None, "Gainbridge Fieldhouse, Indianapolis"),
-    # Olympics
-    ("Summer Olympics", date(2028, 7, 14), date(2028, 7, 30), "Los Angeles"),
 ]
 
 # Emoji at the front of each event title, by category.
