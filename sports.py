@@ -88,6 +88,15 @@ CBB_RIVALRIES = [
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
+# U.S. men's national team: every Gold Cup game, and Nations League Finals games
+# (semifinal, final, 3rd place). (ESPN league, first day to check, last day, rounds or None = all)
+USMNT_ID = "660"
+USMNT_TOURNAMENTS = {
+    "Gold Cup": ("concacaf.gold", (6, 1), (7, 20), None),
+    "Nations League Finals": ("concacaf.nations.league", (3, 10), (4, 5),
+                              ("semifinals", "final", "3rd-place-match")),
+}
+
 # College baseball: every Super Regional and College World Series game.
 COLLEGE_BASEBALL_POSTSEASON = True
 
@@ -122,6 +131,8 @@ TENNIS_SLAMS = [
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
 # (name, first day, last day, notes)
 OTHER_BANNERS = [
+    # Soccer 2027
+    ("Gold Cup", date(2027, 6, 17), date(2027, 7, 11), "CONCACAF Gold Cup"),
     # Drafts 2027
     ("NFL Draft Round 1", date(2027, 4, 29), None, "National Mall, Washington, D.C."),
     ("NFL Draft Rounds 2-3", date(2027, 4, 30), None, "National Mall, Washington, D.C."),
@@ -175,6 +186,7 @@ EMOJI = {
     "Conf Tournament": "\U0001F393\U0001F3C0",
     "March Madness": "\U0001F393\U0001F3C0",
     "College Baseball": "\U0001F393⚾",   # graduation cap + baseball
+    "USMNT": "⚽\U0001F1FA\U0001F1F8",     # soccer ball + US flag
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
@@ -481,6 +493,29 @@ def mlb_postseason():
     return events
 
 
+def usmnt():
+    """U.S. men's national team games in the tournaments above, e.g.
+    "Gold Cup Final: USA vs Mexico"."""
+    events = []
+    year = TODAY.year
+    for name, (league, first, last, rounds) in USMNT_TOURNAMENTS.items():
+        for ev in _scoreboard_days(f"soccer/{league}", date(year, *first), date(year, *last)):
+            comp = ev["competitions"][0]
+            teams = {(c.get("team") or {}).get("id"): c for c in comp.get("competitors", [])}
+            if USMNT_ID not in teams:
+                continue
+            stage = (ev.get("season") or {}).get("slug", "")
+            if rounds and stage not in rounds:
+                continue
+            opponent = next(((c.get("team") or {}).get("displayName") or "TBD"
+                             for i, c in teams.items() if i != USMNT_ID), "TBD")
+            # "semifinals" -> "Semifinal", "3rd-place-match" -> "3rd Place Match"
+            round_name = stage.replace("-", " ").title().replace("3Rd", "3rd").replace("finals", "final")
+            title = f"{name} {round_name}: USA vs {opponent}".replace(f"{name} :", f"{name}:")
+            events.append(espn_event(ev, f"soccer/{league}", title, 2.0, "USMNT"))
+    return events
+
+
 def college_baseball_postseason():
     """Every Super Regional and Men's College World Series game."""
     events = []
@@ -675,7 +710,8 @@ def tennis():
 
 def other_banners():
     def category(name):
-        for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness")):
+        for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness"),
+                         ("Gold Cup", "USMNT")):
             if key in name:
                 return cat
         return "Conf Tournament"
@@ -698,7 +734,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, college_basketball, college_baseball_postseason, tcu_games, golf_banners, tennis, other_banners]
+               march_basketball, college_basketball, college_baseball_postseason, usmnt, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
