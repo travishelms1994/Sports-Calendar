@@ -820,6 +820,19 @@ def main():
             kept += 1
         print(f"{source.__name__:16} {kept:4} events")
 
+    # On College Football Week Saturdays, fold "time TBA" games into the banner's
+    # notes so the banner is the only all-day item that day. A game pops back out
+    # as its own event once its kickoff time is set.
+    banners = {e.start: e for e in events if e.categories == ["CFB Week"]}
+    folded = [e for e in events if e.all_day and "(time TBA)" in e.title and e.start in banners]
+    for e in folded:
+        banner = banners[e.start]
+        line = e.title.replace(" (time TBA)", "") + (f"  ({e.location[2:]})" if e.location else "")
+        banner.description = (banner.description or "Time TBA:") + f"\n• {line}"
+        events.remove(e)
+    if folded:
+        print(f"{'folded TBA':16} {len(folded):4} games into week banners")
+
     if len(events) < 50:
         raise SystemExit(f"Only {len(events)} events; something is wrong, not publishing.")
     write_ics(os.path.join(out_dir, "sports.ics"), events, CALENDAR_NAME,
