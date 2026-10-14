@@ -47,6 +47,11 @@ NBA_PLAYOFFS = True
 # current AP Top 25. Re-checked every run, so it follows each new poll.
 CFB_TOP25_MATCHUPS = True
 CBB_TOP25_MATCHUPS = True   # men's college basketball; starts once the season's first AP poll is out
+# Men's college basketball in March: every NCAA tournament game, and these conferences'
+# tournament games from the quarterfinals on, with matchups and times as they're set.
+MARCH_MADNESS_GAMES = True
+CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
+CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
 COLLEGE_FOOTBALL_PLAYOFF = True
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
@@ -360,14 +365,14 @@ def college_football():
     return events
 
 
-def _scoreboard_days(league, first, last):
+def _scoreboard_days(league, first, last, extra=""):
     """Day-by-day scoreboards (ESPN has no date-range query for these leagues),
     only while today is within a month of the window."""
     if not (first - timedelta(days=30) <= TODAY <= last):
         return
     day = max(first, TODAY - timedelta(days=KEEP_PAST_DAYS))
     while day <= last:
-        yield from fetch_json(f"{ESPN}/{league}/scoreboard?dates={day:%Y%m%d}").get("events", [])
+        yield from fetch_json(f"{ESPN}/{league}/scoreboard?dates={day:%Y%m%d}{extra}").get("events", [])
         day += timedelta(days=1)
 
 
@@ -400,6 +405,38 @@ def nba_postseason():
         matchup = espn_matchup_title(ev)
         title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
         events.append(espn_event(ev, "basketball/nba", title, 2.5, "NBA Playoffs"))
+    return events
+
+
+NCAA_ROUNDS = {"1st Round": "Round of 64", "2nd Round": "Round of 32"}
+
+
+def march_basketball():
+    """Conference tournaments (quarterfinals on) and every NCAA tournament game."""
+    events = []
+    league = "basketball/mens-college-basketball"
+    conf_pattern = re.compile(r"\b(%s) Tournament - (%s)$" % (
+        "|".join(map(re.escape, CBB_CONF_TOURNAMENTS)), "|".join(CBB_CONF_ROUNDS)))
+    year = TODAY.year
+    for ev in _scoreboard_days(league, date(year, 3, 1), date(year, 4, 10), "&groups=50&limit=400"):
+        if _involves_tcu(ev):
+            continue  # TCU's own feed has these
+        comp = ev["competitions"][0]
+        note = _note(comp)
+        matchup = _matchup(comp, rank=True, use_location=True)[0]
+        conf = conf_pattern.search(note)
+        if conf:
+            label, category = f"{conf.group(1)} Tournament {conf.group(2)}", "Conf Tournament"
+        elif MARCH_MADNESS_GAMES and note.startswith("NCAA Men's Basketball Championship"):
+            # "NCAA Men's Basketball Championship - South Region - 1st Round"
+            parts = note.split(" - ")[1:]
+            rnd = NCAA_ROUNDS.get(parts[-1], parts[-1])
+            region = f" ({parts[0].replace(' Region', '')})" if len(parts) > 1 else ""
+            label, category = f"March Madness {rnd}{region}", "March Madness"
+        else:
+            continue
+        title = label if "TBD" in matchup else f"{label}: {matchup}"
+        events.append(espn_event(ev, league, title, 2.0, category))
     return events
 
 
@@ -473,7 +510,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, pro_team_games, nfl_games, college_football,
-               college_basketball, tcu_games, golf_banners, tennis, other_banners]
+               march_basketball, college_basketball, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
