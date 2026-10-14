@@ -119,14 +119,14 @@ EMOJI = {
     "Texans": "\U0001F920",             # cowboy
     "Astros": "⭐",                 # star
     "NFL": "\U0001F3C8",                # football
-    "Top 25": "\U0001F3C8",
-    "Conference Title": "\U0001F3C8",
+    "Top 25": "\U0001F393\U0001F3C8",   # graduation cap = college
+    "Conference Title": "\U0001F393\U0001F3C8",
     "CFP": "\U0001F3C6",                # trophy
     "MLB Playoffs": "⚾",           # baseball
     "NBA Playoffs": "\U0001F3C0",       # basketball
-    "CBB Top 25": "\U0001F3C0",
-    "Conf Tournament": "\U0001F3C0",
-    "March Madness": "\U0001F3C0",
+    "CBB Top 25": "\U0001F393\U0001F3C0",
+    "Conf Tournament": "\U0001F393\U0001F3C0",
+    "March Madness": "\U0001F393\U0001F3C0",
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
