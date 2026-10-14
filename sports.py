@@ -27,12 +27,16 @@ TCU_SPORTS = {
 }
 SKIP_EXHIBITIONS = True
 
-# Pro teams: every regular-season, play-in and playoff game. (ESPN league path, team id, hours)
+# Pro teams: every regular-season, play-in and playoff game.
+# (ESPN league path, team id, hours, local TV used when no national channel is listed)
 PRO_TEAMS = {
-    "Rockets": ("basketball/nba", 10, 2.5),
-    "Texans": ("football/nfl", 34, 3.5),
-    "Astros": ("baseball/mlb", 18, 3.0),
+    "Rockets": ("basketball/nba", 10, 2.5, "Space City Home Network"),
+    "Texans": ("football/nfl", 34, 3.5, ""),
+    "Astros": ("baseball/mlb", 18, 3.0, "Space City Home Network"),
 }
+
+# TV shown in place of the location. Out-of-market services are left out.
+SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+")
 
 # NFL: games not played on Sunday (Thursday, Monday, Saturday, holidays),
 # an all-day "NFL Week N" banner on each Sunday, and all playoff games.
@@ -40,8 +44,9 @@ NFL_NON_SUNDAY_GAMES = True
 NFL_WEEK_BANNERS = True
 NFL_PLAYOFFS = True
 
-# NBA: every play-in and playoff game, added as they're scheduled.
+# NBA and NHL: every play-in and playoff game, added as they're scheduled.
 NBA_PLAYOFFS = True
+NHL_PLAYOFFS = True
 
 # Top 25 matchups: every remaining regular-season game where BOTH teams are in the
 # current AP Top 25. Re-checked every run, so it follows each new poll.
@@ -60,26 +65,27 @@ CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Champions
 MLB_SERIES = ("ALCS", "NLCS", "World Series")
 
 # Golf: all-day banners for these events (read from ESPN's golf calendar).
+# ESPN label: (title, TV)
 GOLF_EVENTS = {
-    "Masters Tournament": "Masters",
-    "PGA Championship": "PGA Championship",
-    "U.S. Open": "U.S. Open (Golf)",
-    "The Open": "The Open Championship",
-    "The Open Championship": "The Open Championship",
-    "Ryder Cup": "Ryder Cup",
+    "Masters Tournament": ("Masters", "ESPN Thu-Fri, CBS Sat-Sun"),
+    "PGA Championship": ("PGA Championship", "ESPN Thu-Fri, CBS Sat-Sun"),
+    "U.S. Open": ("U.S. Open (Golf)", "USA Thu-Fri, NBC Sat-Sun, Peacock"),
+    "The Open": ("The Open Championship", "USA Thu-Fri, NBC Sat-Sun, Peacock"),
+    "The Open Championship": ("The Open Championship", "USA Thu-Fri, NBC Sat-Sun, Peacock"),
+    "Ryder Cup": ("Ryder Cup", "USA, NBC, Peacock"),
 }
 
 # Tennis: all-day banners for each Grand Slam from the first day of the men's
 # round of 16 through the men's final, plus men's singles matches from those
 # rounds. ESPN doesn't publish future Slam dates, so ADD NEXT YEAR'S DATES HERE
-# once they're announced. (name, first day of men's R16, men's final)
+# once they're announced. (name, first day of men's R16, men's final, TV)
 TENNIS_ROUNDS = ("Round 4", "Quarterfinal", "Semifinal", "Final")
 TENNIS_DRAW = "Men's Singles"
 TENNIS_SLAMS = [
-    ("Australian Open", date(2027, 1, 24), date(2027, 1, 31)),
-    ("French Open", date(2027, 5, 30), date(2027, 6, 6)),
-    ("Wimbledon", date(2027, 7, 4), date(2027, 7, 11)),
-    ("US Open (Tennis)", date(2027, 9, 5), date(2027, 9, 12)),
+    ("Australian Open", date(2027, 1, 24), date(2027, 1, 31), "ESPN, ESPN2, ESPN+"),
+    ("French Open", date(2027, 5, 30), date(2027, 6, 6), "TNT, truTV, HBO Max"),
+    ("Wimbledon", date(2027, 7, 4), date(2027, 7, 11), "ESPN, ESPN2, ESPN+"),
+    ("US Open (Tennis)", date(2027, 9, 5), date(2027, 9, 12), "ESPN, ESPN2, ESPN+"),
 ]
 
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
@@ -126,6 +132,7 @@ EMOJI = {
     "NFL Playoffs": "\U0001F3C8\U0001F3C5",    # ball + medal = pro playoffs
     "MLB Playoffs": "⚾\U0001F3C5",
     "NBA Playoffs": "\U0001F3C0\U0001F3C5",
+    "NHL Playoffs": "\U0001F3D2\U0001F3C5",    # hockey stick + medal
     "CBB Top 25": "\U0001F393\U0001F3C0",
     "Conf Tournament": "\U0001F393\U0001F3C0",
     "March Madness": "\U0001F393\U0001F3C0",
@@ -134,8 +141,9 @@ EMOJI = {
     "Olympics": "\U0001F3C5",           # medal
 }
 
-# Drop events that ended more than this many days ago.
-KEEP_PAST_DAYS = 14
+# Drop events that ended more than this many days ago
+# (1 = a 10/14 game is still there on 10/15 and gone on 10/16).
+KEEP_PAST_DAYS = 1
 
 # =============================================================== sources
 
@@ -162,14 +170,17 @@ def tcu_games():
             start = parse_ics_datetime(raw["DTSTART"])
             if not isinstance(start, datetime):
                 title += " (time TBA)"
-            # Lines after the first are the result, TV and radio
-            notes = [promo] + raw.get("DESCRIPTION", "").split("\n")[1:]
+            # Lines after the first are the result, TV, streaming links and radio
+            lines = [l.strip() for l in raw.get("DESCRIPTION", "").split("\n")[1:]]
+            tv = [l[3:].strip() for l in lines if l.startswith("TV:")]
+            radio = [l for l in lines if l.startswith("Radio:")]
+            notes = [promo, raw.get("LOCATION", "").strip()] + radio
             events.append(Event(
                 uid=f"tcu-{raw.get('UID', title + str(start))}",
                 title=title,
                 start=start,
-                location=raw.get("LOCATION", "").strip(),
-                description="\n".join(n.strip() for n in notes if n.strip()),
+                location=tv_label(tv),
+                description="\n".join(n for n in notes if n),
                 url=raw.get("URL", "").replace("&amp;", "&"),
                 duration_hours=3.5 if "Football" in label else 3.0 if "Baseball" in label else 2.5,
                 categories=[label],
@@ -177,17 +188,34 @@ def tcu_games():
     return events
 
 
+def tv_label(channels):
+    """What goes in the event's location line: "📺 ESPN · ESPN+" or "📺 TV TBA"."""
+    channels = [c for c in dict.fromkeys(channels) if c and c not in SKIP_TV]
+    return "\U0001F4FA " + (" · ".join(channels) if channels else "TV TBA")
+
+
+def espn_tv(comp, local_tv=""):
+    """National channels for an ESPN game. When there are none, the team's
+    local channel (e.g. Space City Home Network for the Rockets and Astros)."""
+    national = []
+    for b in (comp.get("geoBroadcasts") or []) + (comp.get("broadcasts") or []):
+        market = b.get("market")
+        market = (market.get("type") if isinstance(market, dict) else market) or ""
+        kind = b.get("type")
+        kind = (kind.get("shortName") if isinstance(kind, dict) else kind) or ""
+        if market.lower() != "national" or kind.lower() == "radio":
+            continue
+        national += b.get("names") or [((b.get("media") or {}).get("shortName"))]
+    national = [c for c in national if c and c not in SKIP_TV]
+    if national:
+        return tv_label(national)
+    return tv_label([f"{local_tv} (local)"] if local_tv else [])
+
+
 def _team_name(competitor):
     team = competitor.get("team") or {}
     name = team.get("shortDisplayName") or team.get("displayName") or "TBD"
     return "TBD" if "TBD" in name else name
-
-
-def _score(competitor):
-    s = competitor.get("score")
-    if isinstance(s, dict):
-        return s.get("displayValue", "")
-    return s or ""
 
 
 def _matchup(comp, rank=False, use_location=False):
@@ -217,10 +245,12 @@ def game_day(ev):
     return central_date(start)
 
 
-def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_location=False):
-    """Turns an ESPN event (from a schedule or scoreboard) into a calendar Event."""
+def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_location=False,
+               local_tv=""):
+    """Turns an ESPN event (from a schedule or scoreboard) into a calendar Event.
+    The TV channel goes where the location usually shows; the venue goes in the notes."""
     comp = ev["competitions"][0]
-    matchup, away, home = _matchup(comp, rank, use_location)
+    matchup = _matchup(comp, rank, use_location)[0]
     title = title or matchup
     status = comp.get("status") or ev.get("status") or {}
     state = (status.get("type") or {}).get("name", "")
@@ -232,16 +262,6 @@ def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_l
         start = game_day(ev)
         title += " (time TBA)"
 
-    details = []
-    if (status.get("type") or {}).get("completed"):
-        details.append(f"Final: {_team_name(away)} {_score(away)}, {_team_name(home)} {_score(home)}")
-    tv = []
-    for b in comp.get("broadcasts") or []:
-        tv += b.get("names") or [((b.get("media") or {}).get("shortName"))]
-    tv = [t for t in dict.fromkeys(tv) if t]
-    if tv:
-        details.append("TV: " + ", ".join(tv))
-
     venue = comp.get("venue") or {}
     addr = venue.get("address") or {}
     where = ", ".join(x for x in (venue.get("fullName"), addr.get("city"), addr.get("state")) if x)
@@ -250,8 +270,8 @@ def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_l
         uid=f"espn-{league.replace('/', '-')}-{ev['id']}",
         title=title,
         start=start,
-        location=where,
-        description="\n".join(details),
+        location=espn_tv(comp, local_tv),
+        description=where,
         duration_hours=hours,
         categories=[category] if category else [],
     )
@@ -263,7 +283,7 @@ def _note(comp):
 
 def pro_team_games():
     events = []
-    for name, (league, team_id, hours) in PRO_TEAMS.items():
+    for name, (league, team_id, hours, local_tv) in PRO_TEAMS.items():
         # Ask for this season and next, so the calendar rolls into new seasons on its own.
         for season in (TODAY.year, TODAY.year + 1):
             season_types = (2, 3, 5) if league.endswith("nba") else (2, 3)  # 5 = NBA play-in
@@ -280,7 +300,7 @@ def pro_team_games():
                     title = None
                     if note and (season_type in (3, 5) or "Cup" in note):
                         title = f"{espn_matchup_title(ev)} ({note})"
-                    events.append(espn_event(ev, league, title, hours, name))
+                    events.append(espn_event(ev, league, title, hours, name, local_tv=local_tv))
     return events
 
 
@@ -413,6 +433,22 @@ def mlb_postseason():
     return events
 
 
+def nhl_postseason():
+    events = []
+    if not NHL_PLAYOFFS:
+        return events
+    year = TODAY.year
+    for ev in _scoreboard_days("hockey/nhl", date(year, 4, 12), date(year, 6, 25)):
+        if (ev.get("season") or {}).get("type") != 3:
+            continue
+        # "East 1st Round - Game 2" -> "East 1st Round Game 2"
+        label = _note(ev["competitions"][0]).replace(" - ", " ") or "NHL Playoffs"
+        matchup = espn_matchup_title(ev)
+        title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
+        events.append(espn_event(ev, "hockey/nhl", title, 2.5, "NHL Playoffs"))
+    return events
+
+
 def nba_postseason():
     events = []
     if not NBA_PLAYOFFS:
@@ -480,16 +516,17 @@ def golf_banners():
             start = central_date(parse_espn_date(item["startDate"]))
             end = central_date(parse_espn_date(item["endDate"]))
             events.append(Event(uid=f"golf-{item.get('id', label + str(start))}",
-                                title=GOLF_EVENTS[label], start=start, end=end,
-                                categories=["Golf"]))
+                                title=GOLF_EVENTS[label][0], start=start, end=end,
+                                location=tv_label([GOLF_EVENTS[label][1]]), categories=["Golf"]))
     return events
 
 
 def tennis():
     events = []
-    for name, first, last in TENNIS_SLAMS:
+    for name, first, last, tv in TENNIS_SLAMS:
         events.append(Event(uid=f"tennis-{name}-{first.year}".replace(" ", "-"),
-                            title=name, start=first, end=last, categories=["Tennis"]))
+                            title=name, start=first, end=last, location=tv_label([tv]),
+                            categories=["Tennis"]))
         # Round-of-16 pairings and times get posted a day or two ahead.
         if not (first - timedelta(days=3) <= TODAY <= last + timedelta(days=1)):
             continue
@@ -512,14 +549,14 @@ def tennis():
                     start = parse_espn_date(comp["date"])
                     status = (comp.get("status") or {}).get("type") or {}
                     events.append(Event(uid=f"espn-tennis-{comp['id']}", title=title, start=start,
-                                        description=status.get("detail", "") if status.get("completed") else "",
-                                        duration_hours=3.0, categories=["Tennis"]))
+                                        location=tv_label([tv]), duration_hours=3.0,
+                                        categories=["Tennis"]))
     return events
 
 
 def other_banners():
     return [Event(uid=f"banner-{name}-{first.year}".replace(" ", "-"), title=name,
-                  start=first, end=last, location=where,
+                  start=first, end=last, description=where,
                   categories=["Olympics" if "Olympics" in name else
                               "March Madness" if "March Madness" in name else "Conf Tournament"])
             for name, first, last, where in OTHER_BANNERS]
@@ -534,7 +571,7 @@ def main():
     # Order matters: when the same game comes from two places, the first one wins
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
-    sources = [mlb_postseason, nba_postseason, pro_team_games, nfl_games, college_football,
+    sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nfl_games, college_football,
                march_basketball, college_basketball, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
