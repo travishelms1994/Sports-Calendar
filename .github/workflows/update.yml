@@ -1,0 +1,43 @@
+name: Update calendars
+
+on:
+  schedule:
+    - cron: "0 11 * * *"   # every day at 6 AM Central (5 AM in winter)
+    - cron: "0 23 * * *"   # and 6 PM Central, to catch same-day time changes
+  push:
+    branches: [main]
+  workflow_dispatch:       # "Run workflow" button on the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python sports.py site
+      - run: cp index.html site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
