@@ -74,6 +74,17 @@ MARCH_MADNESS_GAMES = True
 CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
 CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
 COLLEGE_FOOTBALL_PLAYOFF = True
+
+# College games always included, ranked or not (ESPN team ids). TCU's own games
+# come from TCU's feed, so TCU is left out here.
+TEXAS_P4 = [2641, 2567, 239, 248, 245, 251]   # Texas Tech, SMU, Baylor, Houston, Texas A&M, Texas
+CFB_RIVALRIES = [
+    (251, 245),   # Texas - Texas A&M
+    (130, 194),   # Michigan - Ohio State
+] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
+CBB_RIVALRIES = [
+    (150, 153),   # Duke - North Carolina
+]
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
@@ -364,27 +375,31 @@ def _involves_tcu(ev):
                for c in ev["competitions"][0].get("competitors", []))
 
 
-def top25_matchups(league, season, label, hours):
-    """Every remaining regular-season game between two teams in the current AP Top 25.
-    Reads each ranked team's schedule, so it covers the rest of the season."""
+def top25_matchups(league, season, label, hours, rivalries=()):
+    """Every remaining regular-season game between two teams in the current AP Top 25,
+    plus every game between the rivalry pairs, ranked or not. Reads each team's
+    schedule, so it covers the rest of the season."""
     polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
     ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
-    if not ap or (ap.get("season") or {}).get("year") != season:
-        return []  # this season's first poll isn't out yet
-    ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    ranks = {}
+    if ap and (ap.get("season") or {}).get("year") == season:  # this season's poll is out
+        ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    rivalries = {frozenset((str(a), str(b))) for a, b in rivalries}
+    teams = set(ranks) | {t for pair in rivalries for t in pair}
     events, seen = [], set()
-    for team_id in ranks:
+    for team_id in sorted(teams):
         data = fetch_json(f"{ESPN}/{league}/teams/{team_id}/schedule?season={season}&seasontype=2")
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            if ev["id"] in seen or not all(i in ranks for i in ids) or _involves_tcu(ev):
+            wanted = all(i in ranks for i in ids) or frozenset(ids) in rivalries
+            if ev["id"] in seen or not wanted or _involves_tcu(ev):
                 continue
             if game_day(ev) < TODAY:
                 continue
             seen.add(ev["id"])
             for c in comp["competitors"]:  # show this week's poll ranks
-                c["curatedRank"] = {"current": ranks[c["team"]["id"]]}
+                c["curatedRank"] = {"current": ranks.get(c["team"]["id"], 99)}
             events.append(espn_event(ev, league, hours=hours, category=label,
                                      rank=True, use_location=True))
     return events
@@ -408,7 +423,7 @@ def college_football():
                     title = note if "TBD" in matchup else f"{note}: {matchup}"
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
-        events += top25_matchups(league, nfl_season(), "Top 25", 3.5)
+        events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES)
     if COLLEGE_FOOTBALL_PLAYOFF:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=3&week=1&dates={nfl_season()}&limit=100")
         for ev in data.get("events", []):
@@ -562,7 +577,7 @@ def college_basketball():
     if not CBB_TOP25_MATCHUPS:
         return []
     season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year  # 2026-27 season = 2027
-    return top25_matchups("basketball/mens-college-basketball", season, "CBB Top 25", 2.0)
+    return top25_matchups("basketball/mens-college-basketball", season, "CBB Top 25", 2.0, CBB_RIVALRIES)
 
 
 def golf_banners():
