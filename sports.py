@@ -461,11 +461,18 @@ def p4_non_saturday(league):
     ap = next((p for p in polls if p.get("name") == "AP Top 25"), {})
     ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
     if CFB_WEEK_BANNERS:
+        # Through the Saturday after Thanksgiving (4th Thursday of November).
+        nov1 = date(nfl_season(), 11, 1)
+        last_saturday = nov1 + timedelta(days=(3 - nov1.weekday()) % 7 + 21 + 2)
         for entry in regular.get("entries", []):
             saturday = central_date(parse_espn_date(entry["startDate"])) + timedelta(days=5)
+            if saturday > last_saturday:
+                continue
+            # Title starts with text (emoji at the end, no category emoji) so the
+            # iPhone lists it above the day's all-day "time TBA" games.
             events.append(Event(uid=f"cfb-week-{nfl_season()}-{entry['value']}",
-                                title=f"College Football {entry['label']}",
-                                start=saturday, categories=["Top 25"]))
+                                title=f"College Football {entry['label']} \U0001F393\U0001F3C8",
+                                start=saturday, categories=["CFB Week"]))
     for week in [w for w in weeks if w >= this_week]:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=2&week={week}"
                           f"&dates={nfl_season()}&groups=80&limit=300")
