@@ -1,4 +1,4 @@
-"""Builds site/sports.ics: a self-updating sports calendar.
+﻿"""Builds site/sports.ics: a self-updating sports calendar.
 
 Runs every day on GitHub Actions. Every run rebuilds the whole file from the
 sources below, so times that get set, new games, playoff matchups, this week's
@@ -27,7 +27,7 @@ TCU_SPORTS = {
 }
 SKIP_EXHIBITIONS = True
 
-# Pro teams: every regular-season and playoff game. (ESPN league path, team id, hours)
+# Pro teams: every regular-season, play-in and playoff game. (ESPN league path, team id, hours)
 PRO_TEAMS = {
     "Rockets": ("basketball/nba", 10, 2.5),
     "Texans": ("football/nfl", 34, 3.5),
@@ -40,10 +40,16 @@ NFL_NON_SUNDAY_GAMES = True
 NFL_WEEK_BANNERS = True
 NFL_PLAYOFFS = True
 
-# College football: games where BOTH teams are in the AP Top 25, for the next 7 days.
+# NBA: every play-in and playoff game, added as they're scheduled.
+NBA_PLAYOFFS = True
+
+# Top 25 matchups: every remaining regular-season game where BOTH teams are in the
+# current AP Top 25. Re-checked every run, so it follows each new poll.
 CFB_TOP25_MATCHUPS = True
-CFB_TOP25_DAYS_AHEAD = 7
+CBB_TOP25_MATCHUPS = True   # men's college basketball; starts once the season's first AP poll is out
 COLLEGE_FOOTBALL_PLAYOFF = True
+# Power Four conference title games, always included.
+CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
 # MLB postseason series to include.
 MLB_SERIES = ("ALCS", "NLCS", "World Series")
@@ -70,8 +76,34 @@ TENNIS_SLAMS = [
     ("US Open (Tennis)", date(2027, 8, 29), date(2027, 9, 12)),
 ]
 
-# Other fixed all-day banners (Olympics etc.). (name, first day, last day, location)
+# Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
+# (name, first day, last day, location)
 OTHER_BANNERS = [
+    # March Madness 2027 (men's)
+    ("March Madness: First Four", date(2027, 3, 16), date(2027, 3, 17), "Dayton, OH"),
+    ("March Madness: Round of 64", date(2027, 3, 18), date(2027, 3, 19), ""),
+    ("March Madness: Round of 32", date(2027, 3, 20), date(2027, 3, 21), ""),
+    ("March Madness: Sweet 16", date(2027, 3, 25), date(2027, 3, 26), ""),
+    ("March Madness: Elite 8", date(2027, 3, 27), date(2027, 3, 28), ""),
+    ("March Madness: Final Four", date(2027, 4, 3), date(2027, 4, 3), "Ford Field, Detroit"),
+    ("March Madness: National Championship", date(2027, 4, 5), date(2027, 4, 5), "Ford Field, Detroit"),
+    # Men's conference tournaments 2027: quarterfinals, semifinals, final
+    ("Big 12 Tournament: Quarterfinals", date(2027, 3, 11), None, "T-Mobile Center, Kansas City"),
+    ("Big 12 Tournament: Semifinals", date(2027, 3, 12), None, "T-Mobile Center, Kansas City"),
+    ("Big 12 Tournament: Championship", date(2027, 3, 13), None, "T-Mobile Center, Kansas City"),
+    ("ACC Tournament: Quarterfinals", date(2027, 3, 11), None, "First Horizon Coliseum, Greensboro"),
+    ("ACC Tournament: Semifinals", date(2027, 3, 12), None, "First Horizon Coliseum, Greensboro"),
+    ("ACC Tournament: Championship", date(2027, 3, 13), None, "First Horizon Coliseum, Greensboro"),
+    ("Big East Tournament: Quarterfinals", date(2027, 3, 11), None, "Madison Square Garden, New York"),
+    ("Big East Tournament: Semifinals", date(2027, 3, 12), None, "Madison Square Garden, New York"),
+    ("Big East Tournament: Championship", date(2027, 3, 13), None, "Madison Square Garden, New York"),
+    ("SEC Tournament: Quarterfinals", date(2027, 3, 12), None, "Bridgestone Arena, Nashville"),
+    ("SEC Tournament: Semifinals", date(2027, 3, 13), None, "Bridgestone Arena, Nashville"),
+    ("SEC Tournament: Championship", date(2027, 3, 14), None, "Bridgestone Arena, Nashville"),
+    ("Big Ten Tournament: Quarterfinals", date(2027, 3, 12), None, "Gainbridge Fieldhouse, Indianapolis"),
+    ("Big Ten Tournament: Semifinals", date(2027, 3, 13), None, "Gainbridge Fieldhouse, Indianapolis"),
+    ("Big Ten Tournament: Championship", date(2027, 3, 14), None, "Gainbridge Fieldhouse, Indianapolis"),
+    # Olympics
     ("Summer Olympics", date(2028, 7, 14), date(2028, 7, 30), "Los Angeles"),
 ]
 
@@ -207,18 +239,19 @@ def pro_team_games():
     for name, (league, team_id, hours) in PRO_TEAMS.items():
         # Ask for this season and next, so the calendar rolls into new seasons on its own.
         for season in (TODAY.year, TODAY.year + 1):
-            for season_type in (2, 3):  # regular season, playoffs
+            season_types = (2, 3, 5) if league.endswith("nba") else (2, 3)  # 5 = NBA play-in
+            for season_type in season_types:
                 url = f"{ESPN}/{league}/teams/{team_id}/schedule?season={season}&seasontype={season_type}"
                 try:
                     data = fetch_json(url)
                 except RuntimeError:
-                    if season == TODAY.year + 1:
-                        continue  # next season not published yet
+                    if season == TODAY.year + 1 or season_type != 2:
+                        continue  # next season or playoffs not published yet
                     raise
                 for ev in data.get("events", []):
                     note = _note(ev["competitions"][0])
                     title = None
-                    if note and (season_type == 3 or "Cup" in note):
+                    if note and (season_type in (3, 5) or "Cup" in note):
                         title = f"{espn_matchup_title(ev)} ({note})"
                     events.append(espn_event(ev, league, title, hours, name))
     return events
@@ -267,26 +300,51 @@ def _involves_tcu(ev):
                for c in ev["competitions"][0].get("competitors", []))
 
 
+def top25_matchups(league, season, label, hours):
+    """Every remaining regular-season game between two teams in the current AP Top 25.
+    Reads each ranked team's schedule, so it covers the rest of the season."""
+    polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
+    ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
+    if not ap or (ap.get("season") or {}).get("year") != season:
+        return []  # this season's first poll isn't out yet
+    ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    events, seen = [], set()
+    for team_id in ranks:
+        data = fetch_json(f"{ESPN}/{league}/teams/{team_id}/schedule?season={season}&seasontype=2")
+        for ev in data.get("events", []):
+            comp = ev["competitions"][0]
+            ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
+            if ev["id"] in seen or not all(i in ranks for i in ids) or _involves_tcu(ev):
+                continue
+            if game_day(ev) < TODAY:
+                continue
+            seen.add(ev["id"])
+            for c in comp["competitors"]:  # show this week's poll ranks
+                c["curatedRank"] = {"current": ranks[c["team"]["id"]]}
+            events.append(espn_event(ev, league, hours=hours, category=label,
+                                     rank=True, use_location=True))
+    return events
+
+
 def college_football():
     events = []
     league = "football/college-football"
+    if CFB_TITLE_GAMES:
+        # Conference title games are in the last regular-season weeks.
+        calendar = (fetch_json(f"{ESPN}/{league}/scoreboard").get("leagues") or [{}])[0].get("calendar", [])
+        regular = next((c for c in calendar if c.get("label") == "Regular Season"), {})
+        last_weeks = [int(w["value"]) for w in regular.get("entries", [])][-2:]
+        for week in last_weeks:
+            data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=2&week={week}"
+                              f"&dates={nfl_season()}&groups=80&limit=300")
+            for ev in data.get("events", []):
+                note = _note(ev["competitions"][0])
+                if note in CFB_TITLE_GAMES and not _involves_tcu(ev):
+                    matchup = _matchup(ev["competitions"][0], rank=True, use_location=True)[0]
+                    title = note if "TBD" in matchup else f"{note}: {matchup}"
+                    events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
-        current = fetch_json(f"{ESPN}/{league}/scoreboard?groups=80&limit=300")
-        week = (current.get("week") or {}).get("number")
-        season_type = (current.get("season") or {}).get("type", 2)
-        season = (current.get("season") or {}).get("year", nfl_season())
-        if week and season_type == 2:
-            for w in (week, week + 1):
-                data = fetch_json(f"{ESPN}/{league}/scoreboard?groups=80&limit=300"
-                                  f"&seasontype=2&week={w}&dates={season}")
-                for ev in data.get("events", []):
-                    comp = ev["competitions"][0]
-                    ranks = [(c.get("curatedRank") or {}).get("current", 99) for c in comp["competitors"]]
-                    day = game_day(ev)
-                    if (all(r <= 25 for r in ranks) and not _involves_tcu(ev)
-                            and TODAY <= day <= TODAY + timedelta(days=CFB_TOP25_DAYS_AHEAD)):
-                        events.append(espn_event(ev, league, hours=3.5, category="Top 25",
-                                                 rank=True, use_location=True))
+        events += top25_matchups(league, nfl_season(), "Top 25", 3.5)
     if COLLEGE_FOOTBALL_PLAYOFF:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=3&week=1&dates={nfl_season()}&limit=100")
         for ev in data.get("events", []):
@@ -302,26 +360,54 @@ def college_football():
     return events
 
 
+def _scoreboard_days(league, first, last):
+    """Day-by-day scoreboards (ESPN has no date-range query for these leagues),
+    only while today is within a month of the window."""
+    if not (first - timedelta(days=30) <= TODAY <= last):
+        return
+    day = max(first, TODAY - timedelta(days=KEEP_PAST_DAYS))
+    while day <= last:
+        yield from fetch_json(f"{ESPN}/{league}/scoreboard?dates={day:%Y%m%d}").get("events", [])
+        day += timedelta(days=1)
+
+
 def mlb_postseason():
     events = []
     year = TODAY.year
-    window_start, window_end = date(year, 9, 25), date(year, 11, 10)
-    if not (window_start - timedelta(days=30) <= TODAY <= window_end):
-        return events
-    day = max(window_start, TODAY - timedelta(days=KEEP_PAST_DAYS))
-    while day <= window_end:
-        data = fetch_json(f"{ESPN}/baseball/mlb/scoreboard?dates={day:%Y%m%d}")
-        for ev in data.get("events", []):
-            note = _note(ev["competitions"][0])
-            if not note.startswith(MLB_SERIES):
-                continue
-            # "World Series - Game 6 If Necessary" -> "World Series Game 6 (if necessary)"
-            label = note.replace(" - ", " ").replace(" If Necessary", " (if necessary)")
-            matchup = espn_matchup_title(ev)
-            title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
-            events.append(espn_event(ev, "baseball/mlb", title, 3.0, "MLB Playoffs"))
-        day += timedelta(days=1)
+    for ev in _scoreboard_days("baseball/mlb", date(year, 9, 25), date(year, 11, 10)):
+        note = _note(ev["competitions"][0])
+        if not note.startswith(MLB_SERIES):
+            continue
+        # "World Series - Game 6 If Necessary" -> "World Series Game 6 (if necessary)"
+        label = note.replace(" - ", " ").replace(" If Necessary", " (if necessary)")
+        matchup = espn_matchup_title(ev)
+        title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
+        events.append(espn_event(ev, "baseball/mlb", title, 3.0, "MLB Playoffs"))
     return events
+
+
+def nba_postseason():
+    events = []
+    if not NBA_PLAYOFFS:
+        return events
+    year = TODAY.year
+    for ev in _scoreboard_days("basketball/nba", date(year, 4, 10), date(year, 6, 25)):
+        if (ev.get("season") or {}).get("type") not in (3, 5):  # playoffs, play-in
+            continue
+        # "East 1st Round - Game 1" -> "East 1st Round Game 1"
+        label = _note(ev["competitions"][0]).replace("NBA Play-In - ", "Play-In ").replace(" - ", " ")
+        label = label or "NBA Playoffs"
+        matchup = espn_matchup_title(ev)
+        title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
+        events.append(espn_event(ev, "basketball/nba", title, 2.5, "NBA Playoffs"))
+    return events
+
+
+def college_basketball():
+    if not CBB_TOP25_MATCHUPS:
+        return []
+    season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year  # 2026-27 season = 2027
+    return top25_matchups("basketball/mens-college-basketball", season, "CBB Top 25", 2.0)
 
 
 def golf_banners():
@@ -386,8 +472,8 @@ def main():
     # Order matters: when the same game comes from two places, the first one wins
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
-    sources = [mlb_postseason, pro_team_games, nfl_games, college_football,
-               tcu_games, golf_banners, tennis, other_banners]
+    sources = [mlb_postseason, nba_postseason, pro_team_games, nfl_games, college_football,
+               college_basketball, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
