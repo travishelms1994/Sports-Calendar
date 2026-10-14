@@ -78,7 +78,8 @@ COLLEGE_FOOTBALL_PLAYOFF = True
 # (ESPN conference ids: ACC 1, Big 12 4, Big Ten 5, SEC 8).
 P4_BOWLS = True
 P4_CONFERENCES = ("1", "4", "5", "8")
-# Regular-season games between two Power Four teams played on any day but Saturday.
+# Regular-season games between two Power Four teams played on any day but Saturday,
+# up until Thanksgiving week (Black Friday is treated like a normal Saturday).
 P4_NON_SATURDAY = True
 
 # College games always included, ranked or not (ESPN team ids). TCU's own games
@@ -449,6 +450,10 @@ def p4_non_saturday(league):
     polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
     ap = next((p for p in polls if p.get("name") == "AP Top 25"), {})
     ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    # Thanksgiving is the 4th Thursday of November; stop at the Monday of that week.
+    nov1 = date(nfl_season(), 11, 1)
+    thanksgiving = nov1 + timedelta(days=(3 - nov1.weekday()) % 7 + 21)
+    cutoff = thanksgiving - timedelta(days=3)
     for week in [w for w in weeks if w >= this_week]:
         data = fetch_json(f"{ESPN}/{league}/scoreboard?seasontype=2&week={week}"
                           f"&dates={nfl_season()}&groups=80&limit=300")
@@ -456,7 +461,7 @@ def p4_non_saturday(league):
             comp = ev["competitions"][0]
             confs = [(c.get("team") or {}).get("conferenceId") for c in comp.get("competitors", [])]
             day = game_day(ev)
-            if (day.weekday() == 5 or day < TODAY or len(confs) != 2
+            if (day.weekday() == 5 or day < TODAY or day >= cutoff or len(confs) != 2
                     or not all(c in P4_CONFERENCES for c in confs) or _involves_tcu(ev)):
                 continue
             for c in comp["competitors"]:  # this week's AP ranks
