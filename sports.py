@@ -88,8 +88,9 @@ CBB_RIVALRIES = [
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
-# MLB postseason series to include.
-MLB_SERIES = ("ALCS", "NLCS", "World Series")
+# MLB postseason: every game (Wild Card, Division Series, LCS, World Series).
+MLB_PLAYOFFS = True
+MLB_ROUND_NAMES = {"ALWC": "AL Wild Card", "NLWC": "NL Wild Card"}
 
 # Golf: all-day banners for these events (read from ESPN's golf calendar).
 # ESPN label: (title, TV)
@@ -452,13 +453,17 @@ def _scoreboard_days(league, first, last, extra=""):
 
 def mlb_postseason():
     events = []
+    if not MLB_PLAYOFFS:
+        return events
     year = TODAY.year
     for ev in _scoreboard_days("baseball/mlb", date(year, 9, 25), date(year, 11, 10)):
-        note = _note(ev["competitions"][0])
-        if not note.startswith(MLB_SERIES):
+        if (ev.get("season") or {}).get("type") != 3:  # postseason only
             continue
+        note = _note(ev["competitions"][0]) or "MLB Playoffs"
         # "World Series - Game 6 If Necessary" -> "World Series Game 6 (if necessary)"
         label = note.replace(" - ", " ").replace(" If Necessary", " (if necessary)")
+        for short, full in MLB_ROUND_NAMES.items():
+            label = label.replace(short, full)
         matchup = espn_matchup_title(ev)
         title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
         events.append(espn_event(ev, "baseball/mlb", title, 3.0, "MLB Playoffs"))
