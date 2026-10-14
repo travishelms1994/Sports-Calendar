@@ -30,10 +30,26 @@ SKIP_EXHIBITIONS = True
 # Pro teams: every regular-season, play-in and playoff game.
 # (ESPN league path, team id, hours, local TV used when no national channel is listed)
 PRO_TEAMS = {
-    "Rockets": ("basketball/nba", 10, 2.5, "Space City Home Network"),
+    "Rockets": ("basketball/nba", 10, 2.5, "Space City Home Network (local)"),
     "Texans": ("football/nfl", 34, 3.5, ""),
-    "Astros": ("baseball/mlb", 18, 3.0, "Space City Home Network"),
+    "Astros": ("baseball/mlb", 18, 3.0, "Space City Home Network (local)"),
 }
+
+# NBA regular season, beyond the Rockets:
+# every game between these pairs of teams (ESPN team ids),
+NBA_RIVALRIES = [
+    (25, 24),   # Thunder - Spurs
+    (24, 18),   # Spurs - Knicks
+    (25, 18),   # Thunder - Knicks
+    (20, 2),    # 76ers - Celtics
+    (18, 20),   # Knicks - 76ers
+    (2, 18),    # Celtics - Knicks
+]
+# and from January 1 on, every game between two teams that are currently
+# top-6 seeds in their conference (re-checked every run as standings change).
+NBA_TOP_SEEDS = 6
+NBA_TOP_SEEDS_FROM = (1, 1)   # (month, day)
+NBA_LOCAL_TV = "Local TV / League Pass"
 
 # TV shown in place of the location. Out-of-market services are left out.
 SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+")
@@ -126,6 +142,7 @@ EMOJI = {
     "Texans": "\U0001F402",             # bull
     "Astros": "⭐",                 # star
     "NFL": "\U0001F3C8",                # football
+    "NBA": "\U0001F3C0",                # basketball
     "Top 25": "\U0001F393\U0001F3C8",   # graduation cap = college
     "Conference Title": "\U0001F393\U0001F3C8",
     "CFP": "\U0001F393\U0001F3C6",      # graduation cap + trophy
@@ -209,7 +226,7 @@ def espn_tv(comp, local_tv=""):
     national = [c for c in national if c and c not in SKIP_TV]
     if national:
         return tv_label(national)
-    return tv_label([f"{local_tv} (local)"] if local_tv else [])
+    return tv_label([local_tv] if local_tv else [])
 
 
 def _team_name(competitor):
@@ -433,6 +450,49 @@ def mlb_postseason():
     return events
 
 
+def nba_seeds(season):
+    """{team id: "#1W"} for the current top seeds in each conference."""
+    data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season={season}")
+    seeds = {}
+    for conf in data.get("children", []):
+        letter = "E" if "East" in conf.get("name", "") else "W"
+        for row in (conf.get("standings") or {}).get("entries", []):
+            seed = next((s.get("value") for s in row.get("stats", []) if s.get("name") == "playoffSeed"), None)
+            if seed and int(seed) <= NBA_TOP_SEEDS:
+                seeds[row["team"]["id"]] = f"#{int(seed)}{letter}"
+    return seeds
+
+
+def nba_regular_season():
+    league = "basketball/nba"
+    season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year   # 2026-27 season = 2027
+    seeds_from = date(season, *NBA_TOP_SEEDS_FROM)
+    seeds = nba_seeds(season) if TODAY >= seeds_from else {}
+    rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
+    teams = {t for pair in rivalries for t in pair} | set(seeds)
+
+    events, seen = [], set()
+    for team_id in sorted(teams):
+        data = fetch_json(f"{ESPN}/{league}/teams/{team_id}/schedule?season={season}&seasontype=2")
+        for ev in data.get("events", []):
+            comp = ev["competitions"][0]
+            ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
+            top_matchup = all(i in seeds for i in ids) and game_day(ev) >= seeds_from
+            if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup):
+                continue
+            seen.add(ev["id"])
+            teams_by_side = {c.get("homeAway"): c for c in comp["competitors"]}
+
+            def name(c):
+                tid = (c.get("team") or {}).get("id")
+                return f"{seeds[tid]} {_team_name(c)}" if tid in seeds else _team_name(c)
+
+            sep = "vs" if comp.get("neutralSite") else "@"
+            title = f"{name(teams_by_side['away'])} {sep} {name(teams_by_side['home'])}"
+            events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
+    return events
+
+
 def nhl_postseason():
     events = []
     if not NHL_PLAYOFFS:
@@ -571,7 +631,7 @@ def main():
     # Order matters: when the same game comes from two places, the first one wins
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
-    sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nfl_games, college_football,
+    sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
                march_basketball, college_basketball, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
