@@ -78,6 +78,7 @@ COLLEGE_FOOTBALL_PLAYOFF = True
 # (ESPN conference ids: ACC 1, Big 12 4, Big Ten 5, SEC 8).
 P4_BOWLS = True
 P4_CONFERENCES = ("1", "4", "5", "8")
+P4_EXTRA_TEAMS = ("87",)   # Notre Dame (independent) counts as Power Four
 # Regular-season games between two Power Four teams played on any day but Saturday,
 # up until Thanksgiving week (Black Friday is treated like a normal Saturday).
 P4_NON_SATURDAY = True
@@ -437,6 +438,12 @@ def top25_matchups(league, season, label, hours, rivalries=()):
     return events
 
 
+def _both_p4(comp):
+    teams = [c.get("team") or {} for c in comp.get("competitors", [])]
+    return len(teams) == 2 and all(
+        t.get("conferenceId") in P4_CONFERENCES or t.get("id") in P4_EXTRA_TEAMS for t in teams)
+
+
 def p4_non_saturday(league):
     """Remaining regular-season Power Four vs Power Four games not played on a Saturday."""
     events = []
@@ -459,10 +466,9 @@ def p4_non_saturday(league):
                           f"&dates={nfl_season()}&groups=80&limit=300")
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
-            confs = [(c.get("team") or {}).get("conferenceId") for c in comp.get("competitors", [])]
             day = game_day(ev)
-            if (day.weekday() == 5 or day < TODAY or day >= cutoff or len(confs) != 2
-                    or not all(c in P4_CONFERENCES for c in confs) or _involves_tcu(ev)):
+            if (day.weekday() == 5 or day < TODAY or day >= cutoff
+                    or not _both_p4(comp) or _involves_tcu(ev)):
                 continue
             for c in comp["competitors"]:  # this week's AP ranks
                 c["curatedRank"] = {"current": ranks.get(c["team"]["id"], 99)}
@@ -499,9 +505,7 @@ def college_football():
             note = _note(comp)
             if "College Football Playoff" not in note:
                 # Other bowls: only when both teams are set and both are Power Four
-                confs = [(c.get("team") or {}).get("conferenceId") for c in comp.get("competitors", [])]
-                if (P4_BOWLS and "Bowl" in note and len(confs) == 2
-                        and all(c in P4_CONFERENCES for c in confs) and not _involves_tcu(ev)):
+                if P4_BOWLS and "Bowl" in note and _both_p4(comp) and not _involves_tcu(ev):
                     bowl = re.sub(r"\s+Presented by.*$", "", note, flags=re.I)
                     matchup = _matchup(comp, rank=True, use_location=True)[0].replace(" @ ", " vs ")
                     events.append(espn_event(ev, league, f"{bowl}: {matchup}", 3.5, "Bowl"))
