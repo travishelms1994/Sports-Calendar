@@ -112,7 +112,9 @@ OTHER_BANNERS = [
 
 # Emoji at the front of each event title, by category.
 EMOJI = {
-    "TCU": "\U0001F438",                # frog
+    "TCU Football": "\U0001F438\U0001F3C8",     # frog + ball
+    "TCU Basketball": "\U0001F438\U0001F3C0",
+    "TCU Baseball": "\U0001F438⚾",
     "Rockets": "\U0001F680",            # rocket
     "Texans": "\U0001F920",             # cowboy
     "Astros": "⭐",                 # star
@@ -120,8 +122,9 @@ EMOJI = {
     "Top 25": "\U0001F393\U0001F3C8",   # graduation cap = college
     "Conference Title": "\U0001F393\U0001F3C8",
     "CFP": "\U0001F3C6",                # trophy
-    "MLB Playoffs": "⚾",           # baseball
-    "NBA Playoffs": "\U0001F3C0",       # basketball
+    "NFL Playoffs": "\U0001F3C8\U0001F3C5",    # ball + medal = pro playoffs
+    "MLB Playoffs": "⚾\U0001F3C5",
+    "NBA Playoffs": "\U0001F3C0\U0001F3C5",
     "CBB Top 25": "\U0001F393\U0001F3C0",
     "Conf Tournament": "\U0001F393\U0001F3C0",
     "March Madness": "\U0001F393\U0001F3C0",
@@ -168,7 +171,7 @@ def tcu_games():
                 description="\n".join(n.strip() for n in notes if n.strip()),
                 url=raw.get("URL", "").replace("&amp;", "&"),
                 duration_hours=3.5 if "Football" in label else 3.0 if "Baseball" in label else 2.5,
-                categories=["TCU"],
+                categories=[label],
             ))
     return events
 
@@ -314,7 +317,7 @@ def nfl_games():
                     continue
                 matchup = espn_matchup_title(ev)
                 title = note if _teams_unknown(matchup) else f"{note}: {matchup}"
-                events.append(espn_event(ev, "football/nfl", title, 3.5, "NFL"))
+                events.append(espn_event(ev, "football/nfl", title, 3.5, "NFL Playoffs"))
     return events
 
 
