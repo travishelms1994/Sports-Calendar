@@ -112,6 +112,26 @@ OTHER_BANNERS = [
     ("Summer Olympics", date(2028, 7, 14), date(2028, 7, 30), "Los Angeles"),
 ]
 
+# Emoji at the front of each event title, by category.
+EMOJI = {
+    "TCU": "\U0001F438",                # frog
+    "Rockets": "\U0001F680",            # rocket
+    "Texans": "\U0001F920",             # cowboy
+    "Astros": "⭐",                 # star
+    "NFL": "\U0001F3C8",                # football
+    "Top 25": "\U0001F3C8",
+    "Conference Title": "\U0001F3C8",
+    "CFP": "\U0001F3C6",                # trophy
+    "MLB Playoffs": "⚾",           # baseball
+    "NBA Playoffs": "\U0001F3C0",       # basketball
+    "CBB Top 25": "\U0001F3C0",
+    "Conf Tournament": "\U0001F3C0",
+    "March Madness": "\U0001F3C0",
+    "Golf": "⛳",                   # flag in hole
+    "Tennis": "\U0001F3BE",             # tennis
+    "Olympics": "\U0001F3C5",           # medal
+}
+
 # Drop events that ended more than this many days ago.
 KEEP_PAST_DAYS = 14
 
@@ -496,7 +516,9 @@ def tennis():
 
 def other_banners():
     return [Event(uid=f"banner-{name}-{first.year}".replace(" ", "-"), title=name,
-                  start=first, end=last, location=where)
+                  start=first, end=last, location=where,
+                  categories=["Olympics" if "Olympics" in name else
+                              "March Madness" if "March Madness" in name else "Conf Tournament"])
             for name, first, last, where in OTHER_BANNERS]
 
 
@@ -520,6 +542,9 @@ def main():
             if e.uid in seen or e.last_moment() < cutoff:
                 continue
             seen.add(e.uid)
+            emoji = EMOJI.get(e.categories[0]) if e.categories else None
+            if emoji:
+                e.title = f"{emoji} {e.title}"
             events.append(e)
             kept += 1
         print(f"{source.__name__:16} {kept:4} events")
