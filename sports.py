@@ -194,7 +194,7 @@ def tcu_games():
             opponent = re.sub(r"^TCU [^v@]*?(?=\b(vs|at)\b)", "", summary).strip()
             # "vs Kansas - Haunting at The Carter": promo name goes in the notes
             opponent, _, promo = opponent.partition(" - ")
-            title = f"{label} {opponent}"
+            title = f"TCU {opponent}"   # the emoji shows the sport
             start = parse_ics_datetime(raw["DTSTART"])
             if not isinstance(start, datetime):
                 title += " (time TBA)"
