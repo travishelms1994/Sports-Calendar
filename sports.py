@@ -668,7 +668,8 @@ def nfl_games():
                 if day.weekday() == 6:
                     sundays.add(day)
                 if wanted:
-                    title = nfl_title(ev) + (f" ({address.get('city')})" if abroad and address.get("city") else "")
+                    city = {"Saint-Denis": "Paris"}.get(address.get("city"), address.get("city"))
+                    title = nfl_title(ev) + (f" ({city})" if abroad and city else "")
                     events.append(espn_event(ev, "football/nfl", title, 3.5, "NFL"))
             if NFL_WEEK_BANNERS and sundays:
                 sunday = min(sundays)
