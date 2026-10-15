@@ -171,8 +171,35 @@ CFB_BIG_PROGRAMS = [
 ]
 CFB_RIVALRIES += [(a, b) for i, a in enumerate(CFB_BIG_PROGRAMS) for b in CFB_BIG_PROGRAMS[i + 1:]]
 CBB_RIVALRIES = [
-    (150, 153),   # Duke - North Carolina
-]
+    (150, 153),    # Duke - North Carolina
+    (96, 97),      # Kentucky - Louisville
+    (2509, 84),    # Purdue - Indiana
+    (130, 127),    # Michigan - Michigan State
+    (2305, 2306),  # Kansas - Kansas State
+    (142, 2305),   # Missouri - Kansas
+    (2294, 66),    # Iowa - Iowa State
+    (12, 9),       # Arizona - Arizona State
+    (30, 26),      # USC - UCLA
+    (152, 153),    # NC State - North Carolina
+    (277, 221),    # West Virginia - Pitt
+    (254, 252),    # Utah - BYU
+    (251, 245),    # Texas - Texas A&M
+    (258, 259),    # Virginia - Virginia Tech
+    (130, 194),    # Michigan - Ohio State
+    (333, 2),      # Alabama - Auburn
+    (145, 344),    # Ole Miss - Mississippi State
+    (201, 197),    # Oklahoma - Oklahoma State
+    (238, 2633),   # Vanderbilt - Tennessee
+    (251, 201),    # Texas - Oklahoma
+    (52, 57),      # Florida State - Florida
+    (52, 2390),    # Florida State - Miami
+    (2483, 264),   # Oregon - Washington
+    (135, 275),    # Minnesota - Wisconsin
+    (2294, 135),   # Iowa - Minnesota
+    (275, 2294),   # Wisconsin - Iowa
+    (77, 356),     # Northwestern - Illinois
+    (259, 277),    # Virginia Tech - West Virginia
+] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
