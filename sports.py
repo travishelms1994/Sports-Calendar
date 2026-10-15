@@ -110,10 +110,9 @@ USMNT_TOURNAMENTS = {
     "Women's World Cup": ("fifa.wwc", (6, 15), (8, 25), None, USWNT_ID),
 }
 
-# European soccer (ESPN team ids). Weekend (Sat/Sun) games only, except Champions
-# League games from the round of 16 on.
+# European soccer (ESPN team ids). All rules apply on any day of the week.
 # Per league: emoji category, "show_rank" = table spots shown as #N in titles (even if
-# only one team is that high), "top_matchup" = weekend league games between two teams
+# only one team is that high), "top_matchup" = league games between two teams
 # this high in the table (None = rule off), and "tv" shown until the exact channel is
 # listed (about two weeks out).
 SOCCER_LEAGUES = {
@@ -127,15 +126,18 @@ UCL_TV = "CBS · Paramount+"
 # Club names to show differently from ESPN's short names.
 SOCCER_NAMES = {"Spurs": "Tottenham"}
 # Groups of clubs: every game between any two clubs in a group. (No friendlies.)
-# (name, team ids, category, weekends only, only this competition or None = any)
+# (name, team ids, category, only this competition or None = any)
 SOCCER_GROUPS = [
     ("Big Six vs Big Six", ("359", "363", "364", "382", "360", "367"),   # ARS CHE LIV MCI MUN TOT
-     "England", True, "eng.1"),
-    ("Barcelona / Atlético / Real Madrid", ("83", "1068", "86"), "Spain", True, None),
-    ("Juventus / Inter / Milan", ("111", "110", "103"), "Italy", True, None),
-    ("Bayern vs Dortmund", ("132", "124"), "Germany", True, None),
+     "England", "eng.1"),
+    ("Barcelona / Atlético / Real Madrid", ("83", "1068", "86"), "Spain", None),
+    ("Juventus / Inter / Milan", ("111", "110", "103"), "Italy", None),
+    ("Bayern vs Dortmund", ("132", "124"), "Germany", None),
 ]
-# Champions League: every weekend game, plus every game from these rounds on, any day.
+# Champions League before the round of 16: games between any two of these clubs
+# (all the clubs above plus PSG).
+UCL_BIG_CLUBS = {t for g in SOCCER_GROUPS for t in g[1]} | {"160"}   # 160 = PSG
+# Champions League: every weekend game, plus every game from these rounds on.
 UCL_KNOCKOUT_ROUNDS = ("round-of-16", "quarterfinals", "semifinals", "final")
 # Cup finals, only if played on a weekend. ESPN league: (name, category)
 CUP_FINALS = {
@@ -696,7 +698,7 @@ def european_soccer():
         n = SOCCER_LEAGUES[league]["top_matchup"]
         return {t for t, r in ranks[league].items() if n and r <= n}
 
-    teams = {t for g in SOCCER_GROUPS for t in g[1]}
+    teams = set(UCL_BIG_CLUBS)
     for league in SOCCER_LEAGUES:
         teams |= top_teams(league)
 
@@ -718,15 +720,17 @@ def european_soccer():
             weekend = game_day(ev).weekday() >= 5
             if "friendly" in league or len(ids) != 2:
                 continue
-            group = next((g for g in SOCCER_GROUPS if ids <= set(g[1])
-                          and (weekend or not g[3]) and g[4] in (None, league)), None)
+            group = next((g for g in SOCCER_GROUPS if ids <= set(g[1]) and g[3] in (None, league)), None)
             if group:
                 prefix = label(ev, domestic[group[2]])
                 add(ev, league, _soccer_title(comp, all_ranks, prefix), group[2], group[0])
-            elif weekend and league in SOCCER_LEAGUES and ids <= top_teams(league):
+            elif league in SOCCER_LEAGUES and ids <= top_teams(league):
                 rule = SOCCER_LEAGUES[league]
                 add(ev, league, _soccer_title(comp, ranks[league]), rule["category"],
                     f"Top {rule['top_matchup']} matchup")
+            elif league == "uefa.champions" and ids <= UCL_BIG_CLUBS:
+                add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League",
+                    "Champions League big clubs")
             elif weekend and league == "uefa.champions":
                 add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League",
                     "Champions League weekend")
