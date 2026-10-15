@@ -110,14 +110,15 @@ USMNT_TOURNAMENTS = {
     "Women's World Cup": ("fifa.wwc", (6, 15), (8, 25), None, USWNT_ID),
 }
 
-# European soccer (ESPN team ids).
+# European soccer (ESPN team ids). Weekend (Sat/Sun) games only, except Champions
+# League games from the round of 16 on.
 # Per league: emoji category, "show_rank" = table spots shown as #N in titles (even if
 # only one team is that high), "top_matchup" = weekend league games between two teams
 # this high in the table (None = rule off), and "tv" shown until the exact channel is
 # listed (about two weeks out).
 SOCCER_LEAGUES = {
-    "eng.1": {"category": "England", "show_rank": 6, "top_matchup": 5, "tv": "NBC · USA · Peacock"},
-    "esp.1": {"category": "Spain", "show_rank": 4, "top_matchup": None, "tv": "ESPN+"},
+    "eng.1": {"category": "England", "show_rank": 5, "top_matchup": 5, "tv": "NBC · USA · Peacock"},
+    "esp.1": {"category": "Spain", "show_rank": 5, "top_matchup": None, "tv": "ESPN+"},
     "fra.1": {"category": "France", "show_rank": 3, "top_matchup": None, "tv": "beIN Sports"},
     "ita.1": {"category": "Italy", "show_rank": 4, "top_matchup": None, "tv": "Paramount+"},
     "ger.1": {"category": "Germany", "show_rank": 4, "top_matchup": None, "tv": "Peacock"},
@@ -130,7 +131,7 @@ SOCCER_NAMES = {"Spurs": "Tottenham"}
 SOCCER_GROUPS = [
     ("Big Six vs Big Six", ("359", "363", "364", "382", "360", "367"),   # ARS CHE LIV MCI MUN TOT
      "England", True, "eng.1"),
-    ("Barcelona / Atlético / Real Madrid", ("83", "1068", "86"), "Spain", False, None),
+    ("Barcelona / Atlético / Real Madrid", ("83", "1068", "86"), "Spain", True, None),
     ("Juventus / Inter / Milan", ("111", "110", "103"), "Italy", True, None),
     ("Bayern vs Dortmund", ("132", "124"), "Germany", True, None),
 ]
