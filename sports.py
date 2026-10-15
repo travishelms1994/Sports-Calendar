@@ -46,6 +46,14 @@ NBA_RIVALRIES = [
     (20, 2),    # 76ers - Celtics
     (18, 20),   # Knicks - 76ers
     (2, 18),    # Celtics - Knicks
+    (13, 2),    # Lakers - Celtics
+]
+# One-off "return" games this season: the first regular-season game the visiting team
+# plays at the host's arena. (visiting team id, host team id, label)
+NBA_RETURN_GAMES = [
+    (20, 13, "LeBron's return to L.A."),          # 76ers @ Lakers
+    (28, 12, "Kawhi's return to L.A."),           # Raptors @ Clippers
+    (14, 15, "Giannis's return to Milwaukee"),    # Heat @ Bucks
 ]
 # and from January 1 on, every game between two teams that are currently
 # top-6 seeds in their conference (re-checked every run as standings change).
@@ -77,6 +85,7 @@ NFL_RIVALRIES = [(9, 3)]      # Packers - Bears
 # set once a week on Tuesday (after Monday Night Football) and kept through Monday,
 # saved next to the calendar as nfl_seeds.json so every run that week uses them.
 NFL_TOP_SEEDS = 7
+NFL_SEEDS_FROM_WEEK = 6   # no seeds (or seed matchups) in weeks 1-5
 SITE_URL = "https://travishelms1994.github.io/Sports-Calendar"
 
 # NBA and NHL: every play-in and playoff game, added as they're scheduled.
@@ -646,9 +655,15 @@ def nfl_seeds():
     return _NFL_SEEDS
 
 
-def nfl_title(ev):
-    """ "#1A Chiefs @ #5N Eagles": seeds shown for current top-seed teams."""
-    seeds = nfl_seeds()
+def nfl_week_seeds(week):
+    """This week's seeds, or none before NFL_SEEDS_FROM_WEEK."""
+    return nfl_seeds() if (week or 0) >= NFL_SEEDS_FROM_WEEK else {}
+
+
+def nfl_title(ev, week=None):
+    """ "#1A Chiefs @ #5N Eagles": seeds shown for current top-seed teams (week 6 on)."""
+    week = week or (ev.get("week") or {}).get("number")
+    seeds = nfl_week_seeds(week)
     comp = ev["competitions"][0]
     teams = {c.get("homeAway"): c for c in comp.get("competitors", [])}
 
@@ -663,10 +678,10 @@ def nfl_title(ev):
 def nfl_games():
     events = []
     season = nfl_season()
-    seeds = nfl_seeds()
     rivalries = {frozenset((str(a), str(b))) for a, b in NFL_RIVALRIES}
     if NFL_NON_SUNDAY_GAMES or NFL_WEEK_BANNERS:
         for week in range(1, 19):
+            seeds = nfl_week_seeds(week)
             data = fetch_json(f"{ESPN}/football/nfl/scoreboard?seasontype=2&week={week}&dates={season}")
             sundays = set()
             for ev in data.get("events", []):
@@ -679,13 +694,13 @@ def nfl_games():
                 address = (comp.get("venue") or {}).get("address") or {}
                 abroad = address.get("country") not in (None, "", "USA")
                 wanted = ((NFL_NON_SUNDAY_GAMES and day.weekday() != 6) or ids in rivalries
-                          or ids <= set(seeds) or (NFL_SUNDAY_NIGHT and sunday_night)
+                          or (seeds and ids <= set(seeds)) or (NFL_SUNDAY_NIGHT and sunday_night)
                           or (NFL_INTERNATIONAL and abroad))
                 if day.weekday() == 6:
                     sundays.add(day)
                 if wanted:
                     city = {"Saint-Denis": "Paris"}.get(address.get("city"), address.get("city"))
-                    title = nfl_title(ev) + (f" ({city})" if abroad and city else "")
+                    title = nfl_title(ev, week) + (f" ({city})" if abroad and city else "")
                     events.append(espn_event(ev, "football/nfl", title, 3.5, "NFL"))
             if NFL_WEEK_BANNERS and sundays:
                 sunday = min(sundays)
@@ -1097,6 +1112,17 @@ def nba_regular_season():
             if at_venue:
                 title += f" ({place})"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
+
+    # Return games: the visiting team's first game at the host's arena this season.
+    for visitor, host, label in NBA_RETURN_GAMES:
+        data = fetch_json(f"{ESPN}/{league}/teams/{visitor}/schedule?season={season}&seasontype=2")
+        for ev in sorted(data.get("events", []), key=lambda ev: ev["date"]):
+            home = next((c for c in ev["competitions"][0]["competitors"] if c.get("homeAway") == "home"), {})
+            if (home.get("team") or {}).get("id") == str(host):
+                events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
+                title = f"{espn_matchup_title(ev)} ({label})"
+                events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
+                break
 
     # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
     # version of the same game so the title says it's the Cup.
