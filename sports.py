@@ -97,8 +97,51 @@ CFB_WEEK_BANNERS = True
 # come from TCU's feed, so TCU is left out here.
 TEXAS_P4 = [2641, 2567, 239, 248, 245, 251]   # Texas Tech, SMU, Baylor, Houston, Texas A&M, Texas
 CFB_RIVALRIES = [
-    (251, 245),   # Texas - Texas A&M
-    (130, 194),   # Michigan - Ohio State
+    (251, 245),    # Texas - Texas A&M
+    (130, 194),    # Michigan - Ohio State
+    (349, 2426),   # Army - Navy
+    (12, 9),       # Arizona - Arizona State
+    (254, 252),    # Utah - BYU
+    (2305, 2306),  # Kansas - Kansas State
+    (277, 221),    # West Virginia - Pitt
+    (2294, 66),    # Iowa - Iowa State
+    (251, 201),    # Texas - Oklahoma
+    (99, 145),     # LSU - Ole Miss
+    (145, 344),    # Ole Miss - Mississippi State
+    (251, 8),      # Texas - Arkansas
+    (333, 2),      # Alabama - Auburn
+    (2, 61),       # Auburn - Georgia
+    (238, 2633),   # Vanderbilt - Tennessee
+    (96, 97),      # Kentucky - Louisville
+    (2579, 228),   # South Carolina - Clemson
+    (61, 57),      # Georgia - Florida
+    (59, 61),      # Georgia Tech - Georgia
+    (52, 57),      # Florida State - Florida
+    (57, 2390),    # Florida - Miami
+    (135, 275),    # Minnesota - Wisconsin
+    (130, 127),    # Michigan - Michigan State
+    (77, 356),     # Northwestern - Illinois
+    (2509, 84),    # Purdue - Indiana
+    (158, 2294),   # Nebraska - Iowa
+    (2294, 135),   # Iowa - Minnesota
+    (213, 194),    # Penn State - Ohio State
+    (2483, 264),   # Oregon - Washington
+    (30, 26),      # USC - UCLA
+    (24, 25),      # Stanford - Cal
+    (264, 265),    # Washington - Washington State
+    (2483, 204),   # Oregon - Oregon State
+    (87, 30),      # Notre Dame - USC
+    (258, 259),    # Virginia - Virginia Tech
+    (150, 153),    # Duke - North Carolina
+    (152, 153),    # NC State - North Carolina
+    (333, 2633),   # Alabama - Tennessee
+    (333, 99),     # Alabama - LSU
+    (52, 2390),    # Florida State - Miami
+    (142, 2305),   # Missouri - Kansas
+    (275, 2294),   # Wisconsin - Iowa
+    (201, 197),    # Oklahoma - Oklahoma State
+    (259, 277),    # Virginia Tech - West Virginia
+    (8, 99),       # Arkansas - LSU
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 CBB_RIVALRIES = [
     (150, 153),   # Duke - North Carolina
