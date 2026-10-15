@@ -99,19 +99,21 @@ CBB_RIVALRIES = [
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
-# U.S. men's national team: every Gold Cup game, and Nations League Finals games
-# (semifinal, final, 3rd place). (ESPN league, first day to check, last day, rounds or None = all)
-USMNT_ID = "660"
+# U.S. national teams: every men's Gold Cup game, men's Nations League Finals games
+# (semifinal, final, 3rd place), and every women's World Cup game.
+# (ESPN league, first day to check, last day, rounds or None = all, ESPN team id)
+USMNT_ID, USWNT_ID = "660", "2765"
 USMNT_TOURNAMENTS = {
-    "Gold Cup": ("concacaf.gold", (6, 1), (7, 20), None),
+    "Gold Cup": ("concacaf.gold", (6, 1), (7, 20), None, USMNT_ID),
     "Nations League Finals": ("concacaf.nations.league", (3, 10), (4, 5),
-                              ("semifinals", "final", "3rd-place-match")),
+                              ("semifinals", "final", "3rd-place-match"), USMNT_ID),
+    "Women's World Cup": ("fifa.wwc", (6, 15), (8, 25), None, USWNT_ID),
 }
 
 # European soccer (ESPN team ids). League rules apply to weekend (Sat/Sun) games only.
-# For each league: category, how many top table spots count, teams that are always
-# included (any weekend league game), and teams one of which must be playing for the
-# top-N rule (None = any two top-N teams).
+# For each league: category, how many top table spots count, a group of teams whose
+# games against EACH OTHER are always included (Big Six vs Big Six), and teams one of
+# which must be playing for the top-N rule (None = any two top-N teams).
 # "tv" is shown until the exact channel is listed (about two weeks out).
 SOCCER_LEAGUES = {
     "eng.1": {"category": "England", "top": 5, "need_one_of": None, "tv": "NBC · USA · Peacock",
@@ -607,23 +609,24 @@ def mlb_postseason():
 
 
 def usmnt():
-    """U.S. men's national team games in the tournaments above, e.g.
-    "Gold Cup Final: USA vs Mexico"."""
+    """U.S. national team games in the tournaments above, e.g.
+    "Gold Cup Final: USA vs Mexico", "Women's World Cup Group Stage: USA vs Vietnam"."""
     events = []
     year = TODAY.year
-    for name, (league, first, last, rounds) in USMNT_TOURNAMENTS.items():
+    for name, (league, first, last, rounds, us_id) in USMNT_TOURNAMENTS.items():
         for ev in _scoreboard_days(f"soccer/{league}", date(year, *first), date(year, *last)):
             comp = ev["competitions"][0]
             teams = {(c.get("team") or {}).get("id"): c for c in comp.get("competitors", [])}
-            if USMNT_ID not in teams:
+            if us_id not in teams:
                 continue
             stage = (ev.get("season") or {}).get("slug", "")
             if rounds and stage not in rounds:
                 continue
             opponent = next(((c.get("team") or {}).get("displayName") or "TBD"
-                             for i, c in teams.items() if i != USMNT_ID), "TBD")
+                             for i, c in teams.items() if i != us_id), "TBD")
             # "semifinals" -> "Semifinal", "3rd-place-match" -> "3rd Place Match"
-            round_name = stage.replace("-", " ").title().replace("3Rd", "3rd").replace("finals", "final")
+            round_name = (stage.replace("-", " ").title().replace("3Rd", "3rd")
+                          .replace("finals", "final").replace(" Of ", " of "))
             title = f"{name} {round_name}: USA vs {opponent}".replace(f"{name} :", f"{name}:")
             events.append(espn_event(ev, f"soccer/{league}", title, 2.0, "USMNT"))
     return events
@@ -666,10 +669,11 @@ def european_soccer():
                 if "TBA" not in label:
                     tv[ev["id"]] = label
 
-    def add(ev, league, title, category):
+    def add(ev, league, title, category, why=""):
         if ev["id"] not in seen:
             seen.add(ev["id"])
             e = espn_event(ev, f"soccer/{league}", title, 2.0, category)
+            e.rule = why  # which rule picked the game (for checking the list; not shown)
             default = SOCCER_LEAGUES.get(league, {}).get("tv") or (UCL_TV if league == "uefa.champions" else "")
             if "TBA" in e.location:
                 e.location = tv.get(ev["id"]) or (tv_label([default]) if default else e.location)
@@ -702,16 +706,19 @@ def european_soccer():
             rule = SOCCER_LEAGUES.get(league)
             if rule:
                 top = ranks[league]
-                big_six = ids & set(rule["always"])
+                big_six = ids <= set(rule["always"])   # both teams are Big Six
                 top_n = ids <= set(top) and (not rule["need_one_of"] or ids & set(rule["need_one_of"]))
                 if big_six or top_n or ids in rivalries:
+                    why = ("Rivalry" if ids in rivalries else f"Top {rule['top']} matchup" if top_n
+                           else "Big Six vs Big Six")
                     # Table spots shown only on games that qualify as a top-N matchup
-                    add(ev, league, _soccer_title(comp, top if top_n else None), rule["category"])
+                    add(ev, league, _soccer_title(comp, top if top_n else None), rule["category"], why)
             elif ids in rivalries:
                 name = (ev.get("league") or {}).get("shortName", "")
-                add(ev, league, _soccer_title(comp, prefix=name), rivalries[ids])
+                add(ev, league, _soccer_title(comp, prefix=name), rivalries[ids], "Rivalry (cup)")
             elif league == "uefa.champions":
-                add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League")
+                add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League",
+                    "Champions League weekend")
 
     # Champions League from the round of 16 on, any day.
     year = TODAY.year
@@ -722,7 +729,8 @@ def european_soccer():
             # "2nd Leg - Arsenal advance 3-1 on aggregate" -> "2nd Leg" (no spoilers)
             leg = _note(comp).split(" - ")[0] if "Leg" in _note(comp) else ""
             label = f"Champions League {_soccer_round(stage)}" + (f" {leg}" if leg else "")
-            add(ev, "uefa.champions", _soccer_title(comp, prefix=label), "Champions League")
+            add(ev, "uefa.champions", _soccer_title(comp, prefix=label), "Champions League",
+                "Champions League knockout")
 
     # Domestic cup finals on a weekend.
     first, last = date(year, 4, 1), date(year, 6, 7)
@@ -733,7 +741,8 @@ def european_soccer():
                 for league, (name, category) in CUP_FINALS.items():
                     for ev in fetch_json(f"{SOCCER}/{league}/scoreboard?dates={day:%Y%m%d}").get("events", []):
                         if (ev.get("season") or {}).get("slug") == "final":
-                            add(ev, league, _soccer_title(ev["competitions"][0], prefix=f"{name} Final"), category)
+                            add(ev, league, _soccer_title(ev["competitions"][0], prefix=f"{name} Final"),
+                                category, "Cup final")
             day += timedelta(days=1)
     return events
 
