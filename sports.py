@@ -215,6 +215,9 @@ CBB_RIVALRIES = [
     (2086, 2509),  # Butler - Purdue
     (2086, 84),    # Butler - Indiana
     (2086, 87),    # Butler - Notre Dame
+    (87, 2509),    # Notre Dame - Purdue
+    (87, 84),      # Notre Dame - Indiana
+    (2599, 2550),  # St. John's - Seton Hall
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
 
