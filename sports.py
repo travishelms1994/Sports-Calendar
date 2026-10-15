@@ -206,11 +206,30 @@ CBB_RIVALRIES = [
     (275, 269),    # Wisconsin - Marquette
     (2250, 2608),  # Gonzaga - Saint Mary's
     (156, 158),    # Creighton - Nebraska
+    (2483, 264),   # Oregon - Washington
+    (135, 275),    # Minnesota - Wisconsin
+    (264, 2250),   # Washington - Gonzaga
+    (25, 24),      # Cal - Stanford
+    (222, 46),     # Villanova - Georgetown
+    (96, 8),       # Kentucky - Arkansas
+    (2086, 2509),  # Butler - Purdue
+    (2086, 84),    # Butler - Indiana
+    (2086, 87),    # Butler - Notre Dame
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
-# Big time basketball programs: every regular-season game between any two of these.
-CBB_BIG_PROGRAMS = [153, 150, 2305, 96, 41]   # North Carolina, Duke, Kansas, Kentucky, UConn
-CBB_RIVALRIES += [(a, b) for i, a in enumerate(CBB_BIG_PROGRAMS) for b in CBB_BIG_PROGRAMS[i + 1:]]
+
+def _all_pairs(teams):
+    return [(a, b) for i, a in enumerate(teams) for b in teams[i + 1:]]
+
+
+# Basketball groups: every regular-season game between any two teams in a group.
+CBB_GROUPS = [
+    [153, 150, 2305, 96, 41],   # Big time programs: North Carolina, Duke, Kansas, Kentucky, UConn
+    [2168, 2752, 2132, 194],    # Ohio: Dayton, Xavier, Cincinnati, Ohio State
+    [235, 238, 2633],           # Tennessee: Memphis, Vanderbilt, Tennessee
+]
+for _group in CBB_GROUPS:
+    CBB_RIVALRIES += _all_pairs(_group)
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
