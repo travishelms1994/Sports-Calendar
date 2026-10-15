@@ -127,6 +127,8 @@ SOCCER_LEAGUES = {
               "always": ()},
 }
 UCL_TV = "CBS · Paramount+"
+# Club names to show differently from ESPN's short names.
+SOCCER_NAMES = {"Spurs": "Tottenham"}
 # Rivalries: every weekend game in any competition (no friendlies). (team, team, category)
 SOCCER_RIVALRIES = [
     ("83", "86", "Spain"),      # Barcelona - Real Madrid
@@ -642,6 +644,7 @@ def _soccer_title(comp, ranks=None, prefix=""):
     def name(c):
         team = c.get("team") or {}
         n = team.get("shortDisplayName") or team.get("displayName") or "TBD"
+        n = SOCCER_NAMES.get(n, n)
         r = (ranks or {}).get(team.get("id"))
         return f"#{r} {n}" if r else n
 
