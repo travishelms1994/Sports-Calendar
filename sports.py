@@ -244,7 +244,9 @@ def _all_pairs(teams):
 
 # Basketball groups: every regular-season game between any two teams in a group.
 CBB_GROUPS = [
-    [153, 150, 2305, 96, 41],   # Big time programs: North Carolina, Duke, Kansas, Kentucky, UConn
+    # Big time programs (Big Matchups): North Carolina, Duke, Kentucky, Kansas, UConn, UCLA,
+    # Michigan State, Villanova, Indiana, Louisville, Arizona, Gonzaga, Syracuse, Florida, Michigan
+    [153, 150, 96, 2305, 41, 26, 127, 222, 84, 97, 12, 2250, 183, 57, 130],
     [2168, 2752, 2132, 194],    # Ohio: Dayton, Xavier, Cincinnati, Ohio State
     [235, 238, 2633],           # Tennessee: Memphis, Vanderbilt, Tennessee
 ]
