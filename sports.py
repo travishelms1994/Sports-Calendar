@@ -591,9 +591,13 @@ def nfl_seeds():
     if _NFL_SEEDS is not None:
         return _NFL_SEEDS
     _NFL_SEEDS = {}
+    html = ""
     try:
         html = fetch_text("https://www.espn.com/nfl/standings/_/view/playoff", browser=True)
-        start = html.index("window['__espnfitt__']=") + len("window['__espnfitt__']=")
+        marker = re.search(r"""window\[['"]__espnfitt__['"]\]\s*=\s*""", html)
+        if not marker:
+            raise ValueError("no page data")
+        start = marker.end()
         page = json.loads(html[start:html.index(";</script>", start)])
         for conf in page["page"]["content"]["standings"]["groups"]["groups"]:
             letter = "A" if "American" in conf["name"] else "N"
@@ -601,7 +605,9 @@ def nfl_seeds():
                 _NFL_SEEDS[str(row["team"]["id"])] = f"#{seed}{letter}"
         NFL_SEED_SOURCE = "playoff page"
     except (ValueError, KeyError, TypeError, RuntimeError) as e:
-        NFL_SEED_SOURCE = f"feed ({type(e).__name__})"
+        title = re.search(r"<title>([^<]*)", html)
+        NFL_SEED_SOURCE = (f"feed ({e}; page {len(html)} chars, "
+                           f"title {title.group(1)[:60] if title else 'none'})")
         print(f"NFL seeds: playoff page unavailable ({e}); using standings feed")
         data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season={nfl_season()}")
         for conf in data.get("children", []):
