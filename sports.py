@@ -695,10 +695,11 @@ def _involves_tcu(ev):
                for c in ev["competitions"][0].get("competitors", []))
 
 
-def top25_matchups(league, season, label, hours, rivalries=()):
+def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=()):
     """Every remaining regular-season game between two teams in the current AP Top 25,
-    plus every game between the rivalry pairs, ranked or not. Reads each team's
-    schedule, so it covers the rest of the season."""
+    every game between the rivalry pairs (ranked or not), and every game where a
+    "vs_ranked" team plays a current Top 25 team. Reads each team's schedule, so it
+    covers the rest of the season."""
     polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
     ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
     ranks = {}
@@ -712,7 +713,10 @@ def top25_matchups(league, season, label, hours, rivalries=()):
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            wanted = all(i in ranks for i in ids) or frozenset(ids) in rivalries
+            vs_ranked = {str(t) for t in vs_ranked}
+            # A ranked team playing a DIFFERENT team from the vs_ranked list
+            ranked_vs_big = any(a in ranks and b in vs_ranked for a in ids for b in ids if a != b)
+            wanted = all(i in ranks for i in ids) or frozenset(ids) in rivalries or ranked_vs_big
             if ev["id"] in seen or not wanted or _involves_tcu(ev):
                 continue
             if game_day(ev) < TODAY:
@@ -791,7 +795,8 @@ def college_football():
                     title = note if "TBD" in matchup else f"{note}: {matchup}"
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
-        events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES)
+        # Big programs also count against any current Top 25 team, even when unranked.
+        events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES, CFB_BIG_PROGRAMS)
     if P4_NON_SATURDAY:
         events += p4_non_saturday(league)
     if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
