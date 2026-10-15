@@ -67,6 +67,12 @@ SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+", "Fandango",
 NFL_NON_SUNDAY_GAMES = True
 NFL_WEEK_BANNERS = True
 NFL_PLAYOFFS = True
+NFL_SUNDAY_NIGHT = True       # the Sunday night game (NBC), listed like any prime-time game
+# Every regular-season game between these teams. (ESPN team ids)
+NFL_RIVALRIES = [(9, 3)]      # Packers - Bears
+# Every regular-season game between two teams that are currently top-N playoff seeds
+# in their conference (re-checked every run). Seeds show as "#1A" (AFC) / "#5N" (NFC).
+NFL_TOP_SEEDS = 7
 
 # NBA and NHL: every play-in and playoff game, added as they're scheduled.
 NBA_PLAYOFFS = True
@@ -558,6 +564,8 @@ def pro_team_games():
                     title = None
                     if note and (season_type in (3, 5) or "Cup" in note):
                         title = f"{espn_matchup_title(ev)} ({note})"
+                    elif league == "football/nfl" and season_type == 2:
+                        title = nfl_title(ev)   # with playoff seeds
                     events.append(espn_event(ev, league, title, hours, name, local_tv=local_tv))
     return events
 
@@ -570,19 +578,60 @@ def nfl_season():
     return TODAY.year if TODAY.month >= 3 else TODAY.year - 1
 
 
+_NFL_SEEDS = None
+
+
+def nfl_seeds():
+    """{team id: "#1A"} for the current top playoff seeds (A = AFC, N = NFC)."""
+    global _NFL_SEEDS
+    if _NFL_SEEDS is None:
+        data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season={nfl_season()}")
+        _NFL_SEEDS = {}
+        for conf in data.get("children", []):
+            letter = "A" if conf.get("abbreviation") == "AFC" else "N"
+            for row in (conf.get("standings") or {}).get("entries", []):
+                seed = next((s.get("value") for s in row.get("stats", []) if s.get("name") == "playoffSeed"), None)
+                if seed and int(seed) <= NFL_TOP_SEEDS:
+                    _NFL_SEEDS[row["team"]["id"]] = f"#{int(seed)}{letter}"
+    return _NFL_SEEDS
+
+
+def nfl_title(ev):
+    """ "#1A Chiefs @ #5N Eagles": seeds shown for current top-seed teams."""
+    seeds = nfl_seeds()
+    comp = ev["competitions"][0]
+    teams = {c.get("homeAway"): c for c in comp.get("competitors", [])}
+
+    def name(c):
+        tid = (c.get("team") or {}).get("id")
+        return f"{seeds[tid]} {_team_name(c)}" if tid in seeds else _team_name(c)
+
+    sep = "vs" if comp.get("neutralSite") else "@"
+    return f"{name(teams.get('away', {}))} {sep} {name(teams.get('home', {}))}"
+
+
 def nfl_games():
     events = []
     season = nfl_season()
+    seeds = nfl_seeds()
+    rivalries = {frozenset((str(a), str(b))) for a, b in NFL_RIVALRIES}
     if NFL_NON_SUNDAY_GAMES or NFL_WEEK_BANNERS:
         for week in range(1, 19):
             data = fetch_json(f"{ESPN}/football/nfl/scoreboard?seasontype=2&week={week}&dates={season}")
             sundays = set()
             for ev in data.get("events", []):
                 day = game_day(ev)
+                comp = ev["competitions"][0]
+                ids = frozenset((c.get("team") or {}).get("id") for c in comp.get("competitors", []))
+                start = parse_espn_date(ev["date"]).astimezone(CENTRAL)
+                sunday_night = (day.weekday() == 6 and comp.get("timeValid", True) is not False
+                                and start.hour >= 18)
+                wanted = ((NFL_NON_SUNDAY_GAMES and day.weekday() != 6) or ids in rivalries
+                          or ids <= set(seeds) or (NFL_SUNDAY_NIGHT and sunday_night))
                 if day.weekday() == 6:
                     sundays.add(day)
-                elif NFL_NON_SUNDAY_GAMES:
-                    events.append(espn_event(ev, "football/nfl", hours=3.5, category="NFL"))
+                if wanted:
+                    events.append(espn_event(ev, "football/nfl", nfl_title(ev), 3.5, "NFL"))
             if NFL_WEEK_BANNERS and sundays:
                 sunday = min(sundays)
                 events.append(Event(uid=f"nfl-week-{season}-{week}", title=f"NFL Week {week}",
