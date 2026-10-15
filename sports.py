@@ -110,32 +110,29 @@ USMNT_TOURNAMENTS = {
     "Women's World Cup": ("fifa.wwc", (6, 15), (8, 25), None, USWNT_ID),
 }
 
-# European soccer (ESPN team ids). League rules apply to weekend (Sat/Sun) games only.
-# For each league: category, how many top table spots count, a group of teams whose
-# games against EACH OTHER are always included (Big Six vs Big Six), and teams one of
-# which must be playing for the top-N rule (None = any two top-N teams).
-# "tv" is shown until the exact channel is listed (about two weeks out).
+# European soccer (ESPN team ids).
+# Per league: emoji category, "show_rank" = table spots shown as #N in titles (even if
+# only one team is that high), "top_matchup" = weekend league games between two teams
+# this high in the table (None = rule off), and "tv" shown until the exact channel is
+# listed (about two weeks out).
 SOCCER_LEAGUES = {
-    "eng.1": {"category": "England", "top": 5, "need_one_of": None, "tv": "NBC · USA · Peacock",
-              "always": ("359", "363", "364", "382", "360", "367")},  # Big Six: ARS CHE LIV MCI MUN TOT
-    "esp.1": {"category": "Spain", "top": 4, "need_one_of": ("83", "86"), "tv": "ESPN+",   # Barcelona, Real Madrid
-              "always": ()},
-    "fra.1": {"category": "France", "top": 3, "need_one_of": ("160",), "tv": "beIN Sports",  # PSG
-              "always": ()},
-    "ita.1": {"category": "Italy", "top": 4, "need_one_of": None, "tv": "Paramount+", "always": ()},
-    "ger.1": {"category": "Germany", "top": 4, "need_one_of": ("132", "124"), "tv": "Peacock",  # Bayern, Dortmund
-              "always": ()},
+    "eng.1": {"category": "England", "show_rank": 6, "top_matchup": 5, "tv": "NBC · USA · Peacock"},
+    "esp.1": {"category": "Spain", "show_rank": 4, "top_matchup": None, "tv": "ESPN+"},
+    "fra.1": {"category": "France", "show_rank": 3, "top_matchup": None, "tv": "beIN Sports"},
+    "ita.1": {"category": "Italy", "show_rank": 4, "top_matchup": None, "tv": "Paramount+"},
+    "ger.1": {"category": "Germany", "show_rank": 4, "top_matchup": None, "tv": "Peacock"},
 }
 UCL_TV = "CBS · Paramount+"
 # Club names to show differently from ESPN's short names.
 SOCCER_NAMES = {"Spurs": "Tottenham"}
-# Rivalries: every weekend game in any competition (no friendlies). (team, team, category)
-SOCCER_RIVALRIES = [
-    ("83", "86", "Spain"),      # Barcelona - Real Madrid
-    ("86", "1068", "Spain"),    # Real Madrid - Atletico Madrid
-    ("110", "103", "Italy"),    # Inter - AC Milan
-    ("111", "110", "Italy"),    # Juventus - Inter
-    ("132", "124", "Germany"),  # Bayern Munich - Dortmund
+# Groups of clubs: every game between any two clubs in a group. (No friendlies.)
+# (name, team ids, category, weekends only, only this competition or None = any)
+SOCCER_GROUPS = [
+    ("Big Six vs Big Six", ("359", "363", "364", "382", "360", "367"),   # ARS CHE LIV MCI MUN TOT
+     "England", True, "eng.1"),
+    ("Barcelona / Atlético / Real Madrid", ("83", "1068", "86"), "Spain", False, None),
+    ("Juventus / Inter / Milan", ("111", "110", "103"), "Italy", True, None),
+    ("Bayern vs Dortmund", ("132", "124"), "Germany", True, None),
 ]
 # Champions League: every weekend game, plus every game from these rounds on, any day.
 UCL_KNOCKOUT_ROUNDS = ("round-of-16", "quarterfinals", "semifinals", "final")
@@ -682,7 +679,7 @@ def european_soccer():
                 e.location = tv.get(ev["id"]) or (tv_label([default]) if default else e.location)
             events.append(e)
 
-    # Current table spots for each league (only the top N count).
+    # Current table spots: {league: {team id: rank}} for teams high enough to show.
     ranks = {}
     for league, rule in SOCCER_LEAGUES.items():
         data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/soccer/{league}/standings")
@@ -690,36 +687,46 @@ def european_soccer():
         ranks[league] = {}
         for row in rows:
             rank = next((s.get("value") for s in row.get("stats", []) if s.get("name") == "rank"), None)
-            if rank and int(rank) <= rule["top"]:
+            if rank and int(rank) <= rule["show_rank"]:
                 ranks[league][row["team"]["id"]] = int(rank)
+    all_ranks = {t: r for league_ranks in ranks.values() for t, r in league_ranks.items()}
 
-    rivalries = {frozenset(p[:2]): p[2] for p in SOCCER_RIVALRIES}
-    teams = {t for p in rivalries for t in p}
-    for league, rule in SOCCER_LEAGUES.items():
-        teams |= set(rule["always"]) | set(rule["need_one_of"] or ranks[league])
+    def top_teams(league):
+        n = SOCCER_LEAGUES[league]["top_matchup"]
+        return {t for t, r in ranks[league].items() if n and r <= n}
+
+    teams = {t for g in SOCCER_GROUPS for t in g[1]}
+    for league in SOCCER_LEAGUES:
+        teams |= top_teams(league)
+
+    def label(ev, home_league):
+        """Competition name in front of the matchup, except for the clubs' own league."""
+        league = (ev.get("league") or {}).get("slug", "")
+        if league == home_league:
+            return ""
+        name = (ev.get("league") or {}).get("shortName", "")
+        return name.replace("UEFA ", "")
 
     # Each team's upcoming fixtures in every competition.
+    domestic = {g[2]: next(l for l, r in SOCCER_LEAGUES.items() if r["category"] == g[2]) for g in SOCCER_GROUPS}
     for team_id in sorted(teams):
         for ev in fetch_json(f"{SOCCER}/all/teams/{team_id}/schedule?fixture=true").get("events", []):
             league = (ev.get("league") or {}).get("slug", "")
             comp = ev["competitions"][0]
             ids = frozenset((c.get("team") or {}).get("id") for c in comp.get("competitors", []))
-            if game_day(ev).weekday() < 5 or "friendly" in league or len(ids) != 2:
-                continue  # weekends only
-            rule = SOCCER_LEAGUES.get(league)
-            if rule:
-                top = ranks[league]
-                big_six = ids <= set(rule["always"])   # both teams are Big Six
-                top_n = ids <= set(top) and (not rule["need_one_of"] or ids & set(rule["need_one_of"]))
-                if big_six or top_n or ids in rivalries:
-                    why = ("Rivalry" if ids in rivalries else f"Top {rule['top']} matchup" if top_n
-                           else "Big Six vs Big Six")
-                    # Table spots shown only on games that qualify as a top-N matchup
-                    add(ev, league, _soccer_title(comp, top if top_n else None), rule["category"], why)
-            elif ids in rivalries:
-                name = (ev.get("league") or {}).get("shortName", "")
-                add(ev, league, _soccer_title(comp, prefix=name), rivalries[ids], "Rivalry (cup)")
-            elif league == "uefa.champions":
+            weekend = game_day(ev).weekday() >= 5
+            if "friendly" in league or len(ids) != 2:
+                continue
+            group = next((g for g in SOCCER_GROUPS if ids <= set(g[1])
+                          and (weekend or not g[3]) and g[4] in (None, league)), None)
+            if group:
+                prefix = label(ev, domestic[group[2]])
+                add(ev, league, _soccer_title(comp, all_ranks, prefix), group[2], group[0])
+            elif weekend and league in SOCCER_LEAGUES and ids <= top_teams(league):
+                rule = SOCCER_LEAGUES[league]
+                add(ev, league, _soccer_title(comp, ranks[league]), rule["category"],
+                    f"Top {rule['top_matchup']} matchup")
+            elif weekend and league == "uefa.champions":
                 add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League",
                     "Champions League weekend")
 
