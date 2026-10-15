@@ -52,7 +52,8 @@ NBA_TOP_SEEDS_FROM = (1, 1)   # (month, day)
 NBA_LOCAL_TV = "Local TV / League Pass"
 
 # TV shown in place of the location. Out-of-market services are left out.
-SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+")
+SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+", "Fandango",
+           "Universo", "Tele", "ESPN Deportes")   # Spanish-language duplicates of soccer games
 
 # NFL: games not played on Sunday (Thursday, Monday, Saturday, holidays),
 # an all-day "NFL Week N" banner on each Sunday, and all playoff games.
@@ -105,6 +106,42 @@ USMNT_TOURNAMENTS = {
     "Gold Cup": ("concacaf.gold", (6, 1), (7, 20), None),
     "Nations League Finals": ("concacaf.nations.league", (3, 10), (4, 5),
                               ("semifinals", "final", "3rd-place-match")),
+}
+
+# European soccer (ESPN team ids). League rules apply to weekend (Sat/Sun) games only.
+# For each league: category, how many top table spots count, teams that are always
+# included (any weekend league game), and teams one of which must be playing for the
+# top-N rule (None = any two top-N teams).
+# "tv" is shown until the exact channel is listed (about two weeks out).
+SOCCER_LEAGUES = {
+    "eng.1": {"category": "England", "top": 5, "need_one_of": None, "tv": "NBC · USA · Peacock",
+              "always": ("359", "363", "364", "382", "360", "367")},  # Big Six: ARS CHE LIV MCI MUN TOT
+    "esp.1": {"category": "Spain", "top": 4, "need_one_of": ("83", "86"), "tv": "ESPN+",   # Barcelona, Real Madrid
+              "always": ()},
+    "fra.1": {"category": "France", "top": 3, "need_one_of": ("160",), "tv": "beIN Sports",  # PSG
+              "always": ()},
+    "ita.1": {"category": "Italy", "top": 4, "need_one_of": None, "tv": "Paramount+", "always": ()},
+    "ger.1": {"category": "Germany", "top": 4, "need_one_of": ("132", "124"), "tv": "Peacock",  # Bayern, Dortmund
+              "always": ()},
+}
+UCL_TV = "CBS · Paramount+"
+# Rivalries: every weekend game in any competition (no friendlies). (team, team, category)
+SOCCER_RIVALRIES = [
+    ("83", "86", "Spain"),      # Barcelona - Real Madrid
+    ("86", "1068", "Spain"),    # Real Madrid - Atletico Madrid
+    ("110", "103", "Italy"),    # Inter - AC Milan
+    ("111", "110", "Italy"),    # Juventus - Inter
+    ("132", "124", "Germany"),  # Bayern Munich - Dortmund
+]
+# Champions League: every weekend game, plus every game from these rounds on, any day.
+UCL_KNOCKOUT_ROUNDS = ("round-of-16", "quarterfinals", "semifinals", "final")
+# Cup finals, only if played on a weekend. ESPN league: (name, category)
+CUP_FINALS = {
+    "eng.fa": ("FA Cup", "England"),
+    "esp.copa_del_rey": ("Copa del Rey", "Spain"),
+    "ger.dfb_pokal": ("DFB-Pokal", "Germany"),
+    "ita.coppa_italia": ("Coppa Italia", "Italy"),
+    "fra.coupe_de_france": ("Coupe de France", "France"),
 }
 
 # College baseball: every Super Regional and College World Series game.
@@ -198,6 +235,13 @@ EMOJI = {
     "March Madness": "\U0001F393\U0001F3C0",
     "College Baseball": "\U0001F393⚾",   # graduation cap + baseball
     "USMNT": "⚽\U0001F1FA\U0001F1F8",     # soccer ball + US flag
+    # European soccer: country flag + ball
+    "England": "\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F⚽",
+    "Spain": "\U0001F1EA\U0001F1F8⚽",
+    "France": "\U0001F1EB\U0001F1F7⚽",
+    "Italy": "\U0001F1EE\U0001F1F9⚽",
+    "Germany": "\U0001F1E9\U0001F1EA⚽",
+    "Champions League": "\U0001F3C6⚽",
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
@@ -585,6 +629,115 @@ def usmnt():
     return events
 
 
+SOCCER = f"{ESPN}/soccer"
+
+
+def _soccer_title(comp, ranks=None, prefix=""):
+    """ "#2 Arsenal vs #5 Chelsea" (home team first, table spot for top-N teams)."""
+    teams = {c.get("homeAway"): c for c in comp.get("competitors", [])}
+
+    def name(c):
+        team = c.get("team") or {}
+        n = team.get("shortDisplayName") or team.get("displayName") or "TBD"
+        r = (ranks or {}).get(team.get("id"))
+        return f"#{r} {n}" if r else n
+
+    matchup = f"{name(teams.get('home', {}))} vs {name(teams.get('away', {}))}"
+    return f"{prefix}: {matchup}" if prefix else matchup
+
+
+def _soccer_round(slug):
+    return {"round-of-16": "Round of 16", "quarterfinals": "Quarterfinal",
+            "semifinals": "Semifinal", "final": "Final"}.get(slug, slug.replace("-", " ").title())
+
+
+def european_soccer():
+    events, seen = [], set()
+
+    # Exact US channels from the next two weeks of scoreboards (team fixture lists don't have them).
+    tv = {}
+    for league in list(SOCCER_LEAGUES) + ["uefa.champions"]:
+        for offset in range(15):
+            day = TODAY + timedelta(days=offset)
+            if day.weekday() < 5 and league != "uefa.champions":
+                continue
+            for ev in fetch_json(f"{SOCCER}/{league}/scoreboard?dates={day:%Y%m%d}").get("events", []):
+                label = espn_tv(ev["competitions"][0])
+                if "TBA" not in label:
+                    tv[ev["id"]] = label
+
+    def add(ev, league, title, category):
+        if ev["id"] not in seen:
+            seen.add(ev["id"])
+            e = espn_event(ev, f"soccer/{league}", title, 2.0, category)
+            default = SOCCER_LEAGUES.get(league, {}).get("tv") or (UCL_TV if league == "uefa.champions" else "")
+            if "TBA" in e.location:
+                e.location = tv.get(ev["id"]) or (tv_label([default]) if default else e.location)
+            events.append(e)
+
+    # Current table spots for each league (only the top N count).
+    ranks = {}
+    for league, rule in SOCCER_LEAGUES.items():
+        data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/soccer/{league}/standings")
+        rows = (data.get("children") or [{}])[0].get("standings", {}).get("entries", [])
+        ranks[league] = {}
+        for row in rows:
+            rank = next((s.get("value") for s in row.get("stats", []) if s.get("name") == "rank"), None)
+            if rank and int(rank) <= rule["top"]:
+                ranks[league][row["team"]["id"]] = int(rank)
+
+    rivalries = {frozenset(p[:2]): p[2] for p in SOCCER_RIVALRIES}
+    teams = {t for p in rivalries for t in p}
+    for league, rule in SOCCER_LEAGUES.items():
+        teams |= set(rule["always"]) | set(rule["need_one_of"] or ranks[league])
+
+    # Each team's upcoming fixtures in every competition.
+    for team_id in sorted(teams):
+        for ev in fetch_json(f"{SOCCER}/all/teams/{team_id}/schedule?fixture=true").get("events", []):
+            league = (ev.get("league") or {}).get("slug", "")
+            comp = ev["competitions"][0]
+            ids = frozenset((c.get("team") or {}).get("id") for c in comp.get("competitors", []))
+            if game_day(ev).weekday() < 5 or "friendly" in league or len(ids) != 2:
+                continue  # weekends only
+            rule = SOCCER_LEAGUES.get(league)
+            if rule:
+                top = ranks[league]
+                big_six = ids & set(rule["always"])
+                top_n = ids <= set(top) and (not rule["need_one_of"] or ids & set(rule["need_one_of"]))
+                if big_six or top_n or ids in rivalries:
+                    # Table spots shown only on games that qualify as a top-N matchup
+                    add(ev, league, _soccer_title(comp, top if top_n else None), rule["category"])
+            elif ids in rivalries:
+                name = (ev.get("league") or {}).get("shortName", "")
+                add(ev, league, _soccer_title(comp, prefix=name), rivalries[ids])
+            elif league == "uefa.champions":
+                add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League")
+
+    # Champions League from the round of 16 on, any day.
+    year = TODAY.year
+    for ev in _scoreboard_days("soccer/uefa.champions", date(year, 3, 1), date(year, 6, 7)):
+        stage = (ev.get("season") or {}).get("slug", "")
+        if stage in UCL_KNOCKOUT_ROUNDS:
+            comp = ev["competitions"][0]
+            # "2nd Leg - Arsenal advance 3-1 on aggregate" -> "2nd Leg" (no spoilers)
+            leg = _note(comp).split(" - ")[0] if "Leg" in _note(comp) else ""
+            label = f"Champions League {_soccer_round(stage)}" + (f" {leg}" if leg else "")
+            add(ev, "uefa.champions", _soccer_title(comp, prefix=label), "Champions League")
+
+    # Domestic cup finals on a weekend.
+    first, last = date(year, 4, 1), date(year, 6, 7)
+    if first - timedelta(days=30) <= TODAY <= last:
+        day = max(first, TODAY - timedelta(days=KEEP_PAST_DAYS))
+        while day <= last:
+            if day.weekday() >= 5:
+                for league, (name, category) in CUP_FINALS.items():
+                    for ev in fetch_json(f"{SOCCER}/{league}/scoreboard?dates={day:%Y%m%d}").get("events", []):
+                        if (ev.get("season") or {}).get("slug") == "final":
+                            add(ev, league, _soccer_title(ev["competitions"][0], prefix=f"{name} Final"), category)
+            day += timedelta(days=1)
+    return events
+
+
 def college_baseball_postseason():
     """Every Super Regional and Men's College World Series game."""
     events = []
@@ -803,7 +956,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, college_basketball, college_baseball_postseason, usmnt, tcu_games, golf_banners, tennis, other_banners]
+               march_basketball, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
