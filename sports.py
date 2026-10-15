@@ -50,6 +50,12 @@ NBA_RIVALRIES = [
 NBA_TOP_SEEDS = 6
 NBA_TOP_SEEDS_FROM = (1, 1)   # (month, day)
 NBA_LOCAL_TV = "Local TV / League Pass"
+# Every game a team plays at this arena: (team id, arena name contains, label for the title)
+NBA_VENUE_GAMES = [
+    ("24", "Moody Center", "Austin"),   # Spurs home games in Austin
+]
+# NBA Cup knockout rounds to include (ESPN labels).
+NBA_CUP_ROUNDS = {"NBA Cup - Semifinals": "NBA Cup Semifinal", "NBA Cup Championship": "NBA Cup Final"}
 
 # TV shown in place of the location. Out-of-market services are left out.
 SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+", "Fandango",
@@ -124,7 +130,7 @@ SOCCER_LEAGUES = {
 }
 UCL_TV = "CBS · Paramount+"
 # Club names to show differently from ESPN's short names.
-SOCCER_NAMES = {"Spurs": "Tottenham"}
+SOCCER_NAMES = {"Spurs": "Tottenham", "Milan": "AC Milan"}
 # Groups of clubs: every game between any two clubs in a group. (No friendlies.)
 # (name, team ids, category, only this competition or None = any)
 SOCCER_GROUPS = [
@@ -813,7 +819,8 @@ def nba_regular_season():
     seeds_from = date(season, *NBA_TOP_SEEDS_FROM)
     seeds = nba_seeds(season) if TODAY >= seeds_from else {}
     rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
-    teams = {t for pair in rivalries for t in pair} | set(seeds)
+    venues = {team: (arena, place) for team, arena, place in NBA_VENUE_GAMES}
+    teams = {t for pair in rivalries for t in pair} | set(seeds) | set(venues)
 
     events, seen = [], set()
     for team_id in sorted(teams):
@@ -822,7 +829,9 @@ def nba_regular_season():
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
             top_matchup = all(i in seeds for i in ids) and game_day(ev) >= seeds_from
-            if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup):
+            arena, place = venues.get(team_id, (None, ""))
+            at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
+            if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup or at_venue):
                 continue
             seen.add(ev["id"])
             teams_by_side = {c.get("homeAway"): c for c in comp["competitors"]}
@@ -833,6 +842,18 @@ def nba_regular_season():
 
             sep = "vs" if comp.get("neutralSite") else "@"
             title = f"{name(teams_by_side['away'])} {sep} {name(teams_by_side['home'])}"
+            if at_venue:
+                title += f" ({place})"
+            events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
+
+    # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
+    # version of the same game so the title says it's the Cup.
+    for ev in _scoreboard_days(league, date(TODAY.year, 12, 1), date(TODAY.year, 12, 22)):
+        label = NBA_CUP_ROUNDS.get(_note(ev["competitions"][0]))
+        if label:
+            events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
+            matchup = espn_matchup_title(ev)
+            title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
     return events
 
