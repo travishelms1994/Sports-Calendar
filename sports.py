@@ -11,6 +11,7 @@ import os
 import re
 import sys
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from calendar_lib import (CENTRAL, Event, central_date, fetch_json, fetch_text,
                           parse_espn_date, parse_ics, parse_ics_datetime, write_ics)
@@ -185,6 +186,15 @@ TENNIS_SLAMS = [
     ("US Open (Tennis)", date(2027, 9, 5), date(2027, 9, 12), "ESPN, ESPN2, ESPN+"),
 ]
 
+# Triple Crown horse races. Post time in Eastern time (hour, minute), or None while
+# it's not announced (shows as "post time TBA"). UPDATE EACH YEAR.
+# (race, date, post time ET, place, TV)
+HORSE_RACES = [
+    ("Kentucky Derby", date(2027, 5, 1), None, "Churchill Downs, Louisville", "NBC · Peacock"),
+    ("Preakness Stakes", date(2027, 5, 23), None, "Pimlico, Baltimore", "NBC · Peacock"),
+    ("Belmont Stakes", date(2027, 6, 5), None, "Belmont Park, Elmont, NY", "Fox"),
+]
+
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
 # (name, first day, last day, notes)
 OTHER_BANNERS = [
@@ -252,6 +262,7 @@ EMOJI = {
     "Italy": "\U0001F1EE\U0001F1F9⚽",
     "Germany": "\U0001F1E9\U0001F1EA⚽",
     "Champions League": "\U0001F3C6⚽",
+    "Horse Racing": "\U0001F40E",   # horse
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
@@ -979,6 +990,21 @@ def tennis():
     return events
 
 
+def horse_races():
+    events = []
+    eastern = ZoneInfo("America/New_York")
+    for race, day, post, place, tv in HORSE_RACES:
+        if post:
+            start = datetime(day.year, day.month, day.day, *post, tzinfo=eastern)
+            title = race
+        else:
+            start, title = day, f"{race} (post time TBA)"
+        events.append(Event(uid=f"horse-{race}-{day.year}".replace(" ", "-"), title=title, start=start,
+                            location=tv_label([tv]), description=place, duration_hours=1.0,
+                            categories=["Horse Racing"]))
+    return events
+
+
 def other_banners():
     def category(name):
         for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness"),
@@ -1005,7 +1031,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, other_banners]
+               march_basketball, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
