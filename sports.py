@@ -592,12 +592,17 @@ def nfl_seeds():
         return _NFL_SEEDS
     _NFL_SEEDS = {}
     try:
-        # ESPN's CDN copy of the playoff standings page (conferences listed in seed order)
-        data = json.loads(fetch_text("https://cdn.espn.com/core/nfl/standings/_/view/playoff?xhr=1", browser=True))
-        for conf in data["content"]["standings"]["groups"]:
-            letter = "A" if "American" in conf["name"] else "N"
-            for seed, row in enumerate(conf["standings"]["entries"][:NFL_TOP_SEEDS], 1):
-                _NFL_SEEDS[str(row["team"]["id"])] = f"#{seed}{letter}"
+        # ESPN's "playoff" standings table (the one behind its playoff standings page,
+        # with every tiebreaker applied). Conference groups: 8 = AFC, 7 = NFC.
+        for group, letter in ((8, "A"), (7, "N")):
+            table = fetch_json("https://sports.core.api.espn.com/v2/sports/football/leagues/nfl/"
+                               f"seasons/{nfl_season()}/types/2/groups/{group}/standings/1?lang=en")
+            for row in table.get("standings", []):
+                team_id = row["team"]["$ref"].split("/teams/")[1].split("?")[0]
+                stats = (row.get("records") or [{}])[0].get("stats", [])
+                seed = next((s.get("value") for s in stats if s.get("name") == "playoffSeed"), None)
+                if seed and int(seed) <= NFL_TOP_SEEDS:
+                    _NFL_SEEDS[team_id] = f"#{int(seed)}{letter}"
         if len(_NFL_SEEDS) != 2 * NFL_TOP_SEEDS:
             raise ValueError(f"only {len(_NFL_SEEDS)} seeds")
         NFL_SEED_SOURCE = "ESPN playoff standings"
