@@ -54,6 +54,7 @@ NBA_RETURN_GAMES = [
     (20, 13, "LeBron's return to L.A."),          # 76ers @ Lakers
     (28, 12, "Kawhi's return to L.A."),           # Raptors @ Clippers
     (14, 15, "Giannis's return to Milwaukee"),    # Heat @ Bucks
+    (22, 29, "Ja's return to Memphis"),           # Trail Blazers @ Grizzlies
 ]
 # Every game a player's team plays at a former team's arena, as long as the player is
 # still on that team (checked every run). (ESPN athlete id, team id, host team id, label)
@@ -729,7 +730,7 @@ def _involves_tcu(ev):
                for c in ev["competitions"][0].get("competitors", []))
 
 
-def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=()):
+def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ranked_non_saturday=False):
     """Every remaining regular-season game between two teams in the current AP Top 25,
     every game between the rivalry pairs (ranked or not), and every game where a
     "vs_ranked" team plays a current Top 25 team. Reads each team's schedule, so it
@@ -750,7 +751,11 @@ def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=()):
             vs_ranked = {str(t) for t in vs_ranked}
             # A ranked team playing a DIFFERENT team from the vs_ranked list
             ranked_vs_big = any(a in ranks and b in vs_ranked for a in ids for b in ids if a != b)
-            wanted = all(i in ranks for i in ids) or frozenset(ids) in rivalries or ranked_vs_big
+            # Any ranked team playing on a day other than Saturday
+            ranked_weeknight = (ranked_non_saturday and any(i in ranks for i in ids)
+                                and game_day(ev).weekday() != 5)
+            wanted = (all(i in ranks for i in ids) or frozenset(ids) in rivalries or ranked_vs_big
+                      or ranked_weeknight)
             if ev["id"] in seen or not wanted or _involves_tcu(ev):
                 continue
             if game_day(ev) < TODAY:
@@ -831,8 +836,9 @@ def college_football():
     if CFB_TOP25_MATCHUPS:
         # Big programs and Texas Power Four teams also count against any current Top 25
         # team, even when they're unranked themselves.
+        # Also any ranked team playing on a day other than Saturday.
         events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES,
-                                 CFB_BIG_PROGRAMS + TEXAS_P4)
+                                 CFB_BIG_PROGRAMS + TEXAS_P4, ranked_non_saturday=True)
     if P4_NON_SATURDAY:
         events += p4_non_saturday(league)
     if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
