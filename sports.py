@@ -795,8 +795,10 @@ def college_football():
                     title = note if "TBD" in matchup else f"{note}: {matchup}"
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
     if CFB_TOP25_MATCHUPS:
-        # Big programs also count against any current Top 25 team, even when unranked.
-        events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES, CFB_BIG_PROGRAMS)
+        # Big programs and Texas Power Four teams also count against any current Top 25
+        # team, even when they're unranked themselves.
+        events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES,
+                                 CFB_BIG_PROGRAMS + TEXAS_P4)
     if P4_NON_SATURDAY:
         events += p4_non_saturday(league)
     if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
