@@ -17,11 +17,20 @@ USER_AGENT = "Mozilla/5.0 (personal calendar builder)"
 
 # ---------------------------------------------------------------- fetching
 
-def fetch_text(url, retries=3):
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+}
+
+
+def fetch_text(url, retries=3, browser=False):
     last_error = None
     for attempt in range(retries):
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+            headers = BROWSER_HEADERS if browser else {"User-Agent": USER_AGENT}
+            req = urllib.request.Request(url, headers=headers)
             with urllib.request.urlopen(req, timeout=30) as resp:
                 return resp.read().decode("utf-8", errors="replace")
         except Exception as e:  # network hiccup: wait and retry

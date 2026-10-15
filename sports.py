@@ -580,25 +580,29 @@ def nfl_season():
 
 
 _NFL_SEEDS = None
+NFL_SEED_SOURCE = "not loaded"
 
 
 def nfl_seeds():
     """{team id: "#1A"} for the current top playoff seeds (A = AFC, N = NFC).
     Read from ESPN's playoff standings page, which applies every NFL tiebreaker
     (the standings data feed doesn't always); falls back to the feed if needed."""
-    global _NFL_SEEDS
+    global _NFL_SEEDS, NFL_SEED_SOURCE
     if _NFL_SEEDS is not None:
         return _NFL_SEEDS
     _NFL_SEEDS = {}
     try:
-        html = fetch_text("https://www.espn.com/nfl/standings/_/view/playoff")
+        html = fetch_text("https://www.espn.com/nfl/standings/_/view/playoff", browser=True)
         start = html.index("window['__espnfitt__']=") + len("window['__espnfitt__']=")
         page = json.loads(html[start:html.index(";</script>", start)])
         for conf in page["page"]["content"]["standings"]["groups"]["groups"]:
             letter = "A" if "American" in conf["name"] else "N"
             for seed, row in enumerate(conf["standings"][:NFL_TOP_SEEDS], 1):
                 _NFL_SEEDS[str(row["team"]["id"])] = f"#{seed}{letter}"
-    except (ValueError, KeyError, TypeError, RuntimeError):
+        NFL_SEED_SOURCE = "playoff page"
+    except (ValueError, KeyError, TypeError, RuntimeError) as e:
+        NFL_SEED_SOURCE = f"feed ({type(e).__name__})"
+        print(f"NFL seeds: playoff page unavailable ({e}); using standings feed")
         data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season={nfl_season()}")
         for conf in data.get("children", []):
             letter = "A" if conf.get("abbreviation") == "AFC" else "N"
@@ -1257,7 +1261,8 @@ def main():
     if len(events) < 50:
         raise SystemExit(f"Only {len(events)} events; something is wrong, not publishing.")
     write_ics(os.path.join(out_dir, "sports.ics"), events, CALENDAR_NAME,
-              "TCU, Houston teams, NFL, college football, MLB playoffs, golf and tennis majors. Updates daily.")
+              "Personal sports calendar. Updates every 4 hours. "
+              f"NFL seeds from: {NFL_SEED_SOURCE}.")
     print(f"Wrote {len(events)} events to {out_dir}/sports.ics")
 
 
