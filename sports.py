@@ -591,24 +591,20 @@ def nfl_seeds():
     if _NFL_SEEDS is not None:
         return _NFL_SEEDS
     _NFL_SEEDS = {}
-    html = ""
     try:
-        html = fetch_text("https://www.espn.com/nfl/standings/_/view/playoff", browser=True)
-        marker = re.search(r"""window\[['"]__espnfitt__['"]\]\s*=\s*""", html)
-        if not marker:
-            raise ValueError("no page data")
-        start = marker.end()
-        page = json.loads(html[start:html.index(";</script>", start)])
-        for conf in page["page"]["content"]["standings"]["groups"]["groups"]:
+        # ESPN's CDN copy of the playoff standings page (conferences listed in seed order)
+        data = json.loads(fetch_text("https://cdn.espn.com/core/nfl/standings/_/view/playoff?xhr=1", browser=True))
+        for conf in data["content"]["standings"]["groups"]:
             letter = "A" if "American" in conf["name"] else "N"
-            for seed, row in enumerate(conf["standings"][:NFL_TOP_SEEDS], 1):
+            for seed, row in enumerate(conf["standings"]["entries"][:NFL_TOP_SEEDS], 1):
                 _NFL_SEEDS[str(row["team"]["id"])] = f"#{seed}{letter}"
-        NFL_SEED_SOURCE = "playoff page"
+        if len(_NFL_SEEDS) != 2 * NFL_TOP_SEEDS:
+            raise ValueError(f"only {len(_NFL_SEEDS)} seeds")
+        NFL_SEED_SOURCE = "ESPN playoff standings"
     except (ValueError, KeyError, TypeError, RuntimeError) as e:
-        title = re.search(r"<title>([^<]*)", html)
-        NFL_SEED_SOURCE = (f"feed ({e}; page {len(html)} chars, "
-                           f"title {title.group(1)[:60] if title else 'none'})")
-        print(f"NFL seeds: playoff page unavailable ({e}); using standings feed")
+        _NFL_SEEDS = {}
+        NFL_SEED_SOURCE = "ESPN standings feed (backup)"
+        print(f"NFL seeds: playoff standings unavailable ({e}); using standings feed")
         data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/football/nfl/standings?season={nfl_season()}")
         for conf in data.get("children", []):
             letter = "A" if conf.get("abbreviation") == "AFC" else "N"
