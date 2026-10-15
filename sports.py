@@ -55,6 +55,11 @@ NBA_RETURN_GAMES = [
     (28, 12, "Kawhi's return to L.A."),           # Raptors @ Clippers
     (14, 15, "Giannis's return to Milwaukee"),    # Heat @ Bucks
 ]
+# Every game a player's team plays at a former team's arena, as long as the player is
+# still on that team (checked every run). (ESPN athlete id, team id, host team id, label)
+NBA_STAR_VISITS = [
+    (3945274, 13, 6, "Luka in Dallas"),           # Lakers @ Mavericks while Luka is a Laker
+]
 # and from January 1 on, every game between two teams that are currently
 # top-6 seeds in their conference (re-checked every run as standings change).
 NBA_TOP_SEEDS = 6
@@ -1123,6 +1128,23 @@ def nba_regular_season():
                 title = f"{espn_matchup_title(ev)} ({label})"
                 events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
                 break
+
+    # Star visits: every game at the former team's arena while the player is still there.
+    for athlete, team, host, label in NBA_STAR_VISITS:
+        try:
+            info = fetch_json(f"https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{athlete}")
+            current = str(((info.get("athlete") or {}).get("team") or {}).get("id"))
+        except RuntimeError:
+            continue  # can't confirm the player's team this run; skip rather than guess
+        if current != str(team):
+            continue
+        data = fetch_json(f"{ESPN}/{league}/teams/{team}/schedule?season={season}&seasontype=2")
+        for ev in data.get("events", []):
+            home = next((c for c in ev["competitions"][0]["competitors"] if c.get("homeAway") == "home"), {})
+            if (home.get("team") or {}).get("id") == str(host):
+                events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
+                events.append(espn_event(ev, league, f"{espn_matchup_title(ev)} ({label})", 2.5, "NBA",
+                                         local_tv=NBA_LOCAL_TV))
 
     # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
     # version of the same game so the title says it's the Cup.
