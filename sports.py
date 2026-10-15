@@ -48,18 +48,22 @@ NBA_RIVALRIES = [
     (2, 18),    # Celtics - Knicks
     (13, 2),    # Lakers - Celtics
 ]
-# One-off "return" games this season: the first regular-season game the visiting team
-# plays at the host's arena. (visiting team id, host team id, label)
+# Return games: the player's first regular-season game AT the host's arena that he
+# actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
+# even if that's next season. Day-To-Day/Questionable gets a "(questionable)" tag.
+NBA_RETURN_SEASONS = (2027, 2028)   # the 2026-27 season, carrying over into 2027-28 if needed
+# (ESPN athlete id, name, visiting team id, host team id, label)
 NBA_RETURN_GAMES = [
-    (20, 13, "LeBron's return to L.A."),          # 76ers @ Lakers
-    (28, 12, "Kawhi's return to L.A."),           # Raptors @ Clippers
-    (14, 15, "Giannis's return to Milwaukee"),    # Heat @ Bucks
-    (22, 29, "Ja's return to Memphis"),           # Trail Blazers @ Grizzlies
+    (1966, "LeBron", 20, 13, "LeBron's return to L.A."),           # 76ers @ Lakers
+    (6450, "Kawhi", 28, 12, "Kawhi's return to L.A."),             # Raptors @ Clippers
+    (3032977, "Giannis", 14, 15, "Giannis's return to Milwaukee"), # Heat @ Bucks
+    (4279888, "Ja", 22, 29, "Ja's return to Memphis"),             # Trail Blazers @ Grizzlies
 ]
 # Every game a player's team plays at a former team's arena, as long as the player is
-# still on that team (checked every run). (ESPN athlete id, team id, host team id, label)
+# still on that team (checked every run) and isn't listed Out for that game.
+# (ESPN athlete id, name, team id, host team id, label)
 NBA_STAR_VISITS = [
-    (3945274, 13, 6, "Luka in Dallas"),           # Lakers @ Mavericks while Luka is a Laker
+    (3945274, "Luka", 13, 6, "Luka in Dallas"),   # Lakers @ Mavericks while Luka is a Laker
 ]
 # and from January 1 on, every game between two teams that are currently
 # top-6 seeds in their conference (re-checked every run as standings change).
@@ -1078,6 +1082,50 @@ def college_baseball_postseason():
     return events
 
 
+_NBA_INJURIES = None
+
+
+def nba_availability(athlete, day):
+    """'out', 'questionable' or 'ok' for a player in a game on `day`, from ESPN's
+    injury report. Out counts if his expected return is after the game (or, with no
+    return date, the game is within two weeks). Questionable only for games within 3 days."""
+    global _NBA_INJURIES
+    if _NBA_INJURIES is None:
+        _NBA_INJURIES = {}
+        try:
+            for team in fetch_json(f"{ESPN}/basketball/nba/injuries").get("injuries", []):
+                for item in team.get("injuries", []):
+                    link = next((l.get("href", "") for l in (item.get("athlete") or {}).get("links", [])), "")
+                    found = re.search(r"/id/(\d+)", link)
+                    if found:
+                        back = ((item.get("details") or {}).get("returnDate") or "")[:10]
+                        _NBA_INJURIES[found.group(1)] = ((item.get("status") or "").lower(), back)
+        except RuntimeError:
+            pass   # no injury report this run: treat everyone as available
+    status, back = _NBA_INJURIES.get(str(athlete), ("", ""))
+    days_away = (day - TODAY).days
+    if status == "out" and ((back and back > str(day)) or (not back and days_away <= 14)):
+        return "out"
+    if status in ("day-to-day", "questionable", "doubtful") and days_away <= 3:
+        return "questionable"
+    return "ok"
+
+
+def nba_played(event_id, athlete):
+    """Whether the player got into the game, from ESPN's box score."""
+    try:
+        box = fetch_json(f"{ESPN}/basketball/nba/summary?event={event_id}").get("boxscore", {})
+    except RuntimeError:
+        return True   # can't tell: assume he played rather than move the return
+    for team in box.get("players", []):
+        for group in team.get("statistics", []):
+            for row in group.get("athletes", []):
+                if str((row.get("athlete") or {}).get("id")) == str(athlete):
+                    minutes = (row.get("stats") or ["0"])[0]
+                    return not row.get("didNotPlay") and minutes not in ("0", "--", "")
+    return False
+
+
 def nba_seeds(season):
     """{team id: "#1W"} for the current top seeds in each conference."""
     data = fetch_json(f"https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season={season}")
@@ -1124,19 +1172,42 @@ def nba_regular_season():
                 title += f" ({place})"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
 
-    # Return games: the visiting team's first game at the host's arena this season.
-    for visitor, host, label in NBA_RETURN_GAMES:
-        data = fetch_json(f"{ESPN}/{league}/teams/{visitor}/schedule?season={season}&seasontype=2")
-        for ev in sorted(data.get("events", []), key=lambda ev: ev["date"]):
+    def visits(team, host, seasons=None):
+        found = []
+        for year in seasons or (season,):
+            try:
+                found += fetch_json(f"{ESPN}/{league}/teams/{team}/schedule?season={year}&seasontype=2").get("events", [])
+            except RuntimeError:
+                pass   # that season's schedule isn't out yet
+        for ev in sorted(found, key=lambda ev: ev["date"]):
             home = next((c for c in ev["competitions"][0]["competitors"] if c.get("homeAway") == "home"), {})
             if (home.get("team") or {}).get("id") == str(host):
-                events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
-                title = f"{espn_matchup_title(ev)} ({label})"
-                events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
-                break
+                yield ev
+
+    def add_visit(ev, title):
+        nonlocal events
+        events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
+        events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
+
+    # Return games: the first visit he actually plays in (skipping games he's Out for or
+    # sat out), tagged "(questionable)" when he's Day-To-Day.
+    for athlete, name, visitor, host, label in NBA_RETURN_GAMES:
+        for ev in visits(visitor, host, NBA_RETURN_SEASONS):
+            completed = ((ev["competitions"][0].get("status") or {}).get("type") or {}).get("completed")
+            if completed:
+                if nba_played(ev["id"], athlete):
+                    add_visit(ev, f"{espn_matchup_title(ev)} ({label})")
+                    break
+                continue   # he didn't play: the return is still to come
+            status = nba_availability(athlete, game_day(ev))
+            if status == "out":
+                continue   # listed Out for this one: the next visit is the return
+            tag = f" ({name} questionable)" if status == "questionable" else ""
+            add_visit(ev, f"{espn_matchup_title(ev)} ({label}){tag}")
+            break
 
     # Star visits: every game at the former team's arena while the player is still there.
-    for athlete, team, host, label in NBA_STAR_VISITS:
+    for athlete, name, team, host, label in NBA_STAR_VISITS:
         try:
             info = fetch_json(f"https://site.web.api.espn.com/apis/common/v3/sports/basketball/nba/athletes/{athlete}")
             current = str(((info.get("athlete") or {}).get("team") or {}).get("id"))
@@ -1144,13 +1215,13 @@ def nba_regular_season():
             continue  # can't confirm the player's team this run; skip rather than guess
         if current != str(team):
             continue
-        data = fetch_json(f"{ESPN}/{league}/teams/{team}/schedule?season={season}&seasontype=2")
-        for ev in data.get("events", []):
-            home = next((c for c in ev["competitions"][0]["competitors"] if c.get("homeAway") == "home"), {})
-            if (home.get("team") or {}).get("id") == str(host):
-                events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
-                events.append(espn_event(ev, league, f"{espn_matchup_title(ev)} ({label})", 2.5, "NBA",
-                                         local_tv=NBA_LOCAL_TV))
+        for ev in visits(team, host):
+            completed = ((ev["competitions"][0].get("status") or {}).get("type") or {}).get("completed")
+            status = "ok" if completed else nba_availability(athlete, game_day(ev))
+            if status == "out":
+                continue   # listed Out for this game: leave it off
+            tag = f" ({name} questionable)" if status == "questionable" else ""
+            add_visit(ev, f"{espn_matchup_title(ev)} ({label}){tag}")
 
     # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
     # version of the same game so the title says it's the Cup.
