@@ -72,9 +72,12 @@ NFL_SUNDAY_NIGHT = True       # the Sunday night game (NBC), listed like any pri
 NFL_INTERNATIONAL = True      # every game played outside the U.S. (its own TV window)
 # Every regular-season game between these teams. (ESPN team ids)
 NFL_RIVALRIES = [(9, 3)]      # Packers - Bears
-# Every regular-season game between two teams that are currently top-N playoff seeds
-# in their conference (re-checked every run). Seeds show as "#1A" (AFC) / "#5N" (NFC).
+# Every regular-season game between two teams that are top-N playoff seeds in their
+# conference going into the week. Seeds show as "#1A" (AFC) / "#5N" (NFC). They're
+# set once a week on Tuesday (after Monday Night Football) and kept through Monday,
+# saved next to the calendar as nfl_seeds.json so every run that week uses them.
 NFL_TOP_SEEDS = 7
+SITE_URL = "https://travishelms1994.github.io/Sports-Calendar"
 
 # NBA and NHL: every play-in and playoff game, added as they're scheduled.
 NBA_PLAYOFFS = True
@@ -593,15 +596,26 @@ def nfl_season():
 
 _NFL_SEEDS = None
 NFL_SEED_SOURCE = "not loaded"
+NFL_SEED_WEEK = None
 
 
 def nfl_seeds():
     """{team id: "#1A"} for the current top playoff seeds (A = AFC, N = NFC).
     Read from ESPN's playoff standings page, which applies every NFL tiebreaker
     (the standings data feed doesn't always); falls back to the feed if needed."""
-    global _NFL_SEEDS, NFL_SEED_SOURCE
+    global _NFL_SEEDS, NFL_SEED_SOURCE, NFL_SEED_WEEK
     if _NFL_SEEDS is not None:
         return _NFL_SEEDS
+    # The NFL week runs Tuesday-Monday; reuse this week's saved seeds if there are any.
+    NFL_SEED_WEEK = str(TODAY - timedelta(days=(TODAY.weekday() - 1) % 7))
+    try:
+        saved = fetch_json(f"{SITE_URL}/nfl_seeds.json", retries=1)
+        if saved.get("week_of") == NFL_SEED_WEEK and saved.get("seeds"):
+            _NFL_SEEDS = saved["seeds"]
+            NFL_SEED_SOURCE = f"ESPN playoff standings as of {saved.get('as_of', NFL_SEED_WEEK)}"
+            return _NFL_SEEDS
+    except (RuntimeError, ValueError):
+        pass  # no saved seeds yet: fetch this week's
     _NFL_SEEDS = {}
     try:
         # ESPN's "playoff" standings table (the one behind its playoff standings page,
@@ -617,7 +631,7 @@ def nfl_seeds():
                     _NFL_SEEDS[team_id] = f"#{int(seed)}{letter}"
         if len(_NFL_SEEDS) != 2 * NFL_TOP_SEEDS:
             raise ValueError(f"only {len(_NFL_SEEDS)} seeds")
-        NFL_SEED_SOURCE = "ESPN playoff standings"
+        NFL_SEED_SOURCE = f"ESPN playoff standings as of {TODAY}"
     except (ValueError, KeyError, TypeError, RuntimeError) as e:
         _NFL_SEEDS = {}
         NFL_SEED_SOURCE = "ESPN standings feed (backup)"
@@ -1325,6 +1339,12 @@ def main():
               "Personal sports calendar. Updates every 4 hours. "
               f"NFL seeds from: {NFL_SEED_SOURCE}.")
     print(f"Wrote {len(events)} events to {out_dir}/sports.ics")
+    # Save this week's NFL seeds so the rest of the week's runs reuse them.
+    if _NFL_SEEDS and "standings feed" not in NFL_SEED_SOURCE:
+        as_of = NFL_SEED_SOURCE.rsplit(" as of ", 1)[-1]
+        with open(os.path.join(out_dir, "nfl_seeds.json"), "w", encoding="utf-8") as f:
+            json.dump({"week_of": NFL_SEED_WEEK, "as_of": as_of, "seeds": _NFL_SEEDS}, f, indent=1)
+        print(f"NFL seeds for the week of {NFL_SEED_WEEK} (as of {as_of})")
 
 
 if __name__ == "__main__":
