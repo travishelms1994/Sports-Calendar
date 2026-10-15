@@ -69,6 +69,7 @@ NFL_NON_SUNDAY_GAMES = True
 NFL_WEEK_BANNERS = True
 NFL_PLAYOFFS = True
 NFL_SUNDAY_NIGHT = True       # the Sunday night game (NBC), listed like any prime-time game
+NFL_INTERNATIONAL = True      # every game played outside the U.S. (its own TV window)
 # Every regular-season game between these teams. (ESPN team ids)
 NFL_RIVALRIES = [(9, 3)]      # Packers - Bears
 # Every regular-season game between two teams that are currently top-N playoff seeds
@@ -86,6 +87,8 @@ CBB_TOP25_MATCHUPS = True   # men's college basketball; starts once the season's
 # Men's college basketball in March: every NCAA tournament game, and these conferences'
 # tournament games from the quarterfinals on, with matchups and times as they're set.
 MARCH_MADNESS_GAMES = True
+# Early-season tournaments: ESPN name -> label. Final (and Maui semifinals).
+EARLY_TOURNAMENTS = {"Maui Invitational": "Maui Invitational", "Players Era": "Players Era"}
 CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
 CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
 COLLEGE_FOOTBALL_PLAYOFF = True
@@ -153,6 +156,13 @@ CFB_RIVALRIES = [
     (228, 52),     # Clemson - Florida State
     (245, 99),     # Texas A&M - LSU
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
+
+# Texas Power Four vs Power Four schools in bordering states, ranked or not.
+BORDER_P4 = [201, 197, 8, 99]   # Oklahoma, Oklahoma State, Arkansas, LSU
+CFB_RIVALRIES += [(a, b) for a in TEXAS_P4 for b in BORDER_P4]
+# Texas Group of Five schools vs each other, any day.
+TEXAS_G6 = [249, 242, 2534, 326, 2638, 2636]   # North Texas, Rice, Sam Houston, Texas State, UTEP, UTSA
+CFB_RIVALRIES += [(a, b) for i, a in enumerate(TEXAS_G6) for b in TEXAS_G6[i + 1:]]
 
 # Big program matchups: every regular-season game between any two of these schools.
 CFB_BIG_PROGRAMS = [
@@ -650,12 +660,16 @@ def nfl_games():
                 start = parse_espn_date(ev["date"]).astimezone(CENTRAL)
                 sunday_night = (day.weekday() == 6 and comp.get("timeValid", True) is not False
                                 and start.hour >= 18)
+                address = (comp.get("venue") or {}).get("address") or {}
+                abroad = address.get("country") not in (None, "", "USA")
                 wanted = ((NFL_NON_SUNDAY_GAMES and day.weekday() != 6) or ids in rivalries
-                          or ids <= set(seeds) or (NFL_SUNDAY_NIGHT and sunday_night))
+                          or ids <= set(seeds) or (NFL_SUNDAY_NIGHT and sunday_night)
+                          or (NFL_INTERNATIONAL and abroad))
                 if day.weekday() == 6:
                     sundays.add(day)
                 if wanted:
-                    events.append(espn_event(ev, "football/nfl", nfl_title(ev), 3.5, "NFL"))
+                    title = nfl_title(ev) + (f" ({address.get('city')})" if abroad and address.get("city") else "")
+                    events.append(espn_event(ev, "football/nfl", title, 3.5, "NFL"))
             if NFL_WEEK_BANNERS and sundays:
                 sunday = min(sundays)
                 events.append(Event(uid=f"nfl-week-{season}-{week}", title=f"NFL Week {week}",
@@ -1137,6 +1151,36 @@ def march_basketball():
     return events
 
 
+def early_season_tournaments():
+    """Maui Invitational semifinals and final, Players Era final (late November).
+    ESPN labels the finals; Maui semifinals are worked out from the bracket: the
+    day-two games between two first-round winners."""
+    events = []
+    league = "basketball/mens-college-basketball"
+    games = [ev for ev in _scoreboard_days(league, date(TODAY.year, 11, 15), date(TODAY.year, 12, 5),
+                                           "&groups=50&limit=400")
+             if any(t in _note(ev["competitions"][0]) for t in EARLY_TOURNAMENTS)]
+    for name in EARLY_TOURNAMENTS:
+        mine = sorted((ev for ev in games if name in _note(ev["competitions"][0])), key=lambda ev: ev["date"])
+        days = sorted({game_day(ev) for ev in mine})
+        first_round_winners = {c["team"]["id"] for ev in mine if days and game_day(ev) == days[0]
+                               for c in ev["competitions"][0]["competitors"] if c.get("winner")}
+        for ev in mine:
+            comp = ev["competitions"][0]
+            note = _note(comp)
+            ids = {c["team"]["id"] for c in comp["competitors"]}
+            if note.endswith("Championship"):
+                label = f"{EARLY_TOURNAMENTS[name]} Final"
+            elif (EARLY_TOURNAMENTS[name] == "Maui Invitational" and len(days) > 1
+                  and game_day(ev) == days[1] and ids <= first_round_winners):
+                label = f"{EARLY_TOURNAMENTS[name]} Semifinal"
+            else:
+                continue
+            matchup = _matchup(comp, rank=True, use_location=True)[0]
+            events.append(espn_event(ev, league, f"{label}: {matchup}", 2.0, "CBB Top 25"))
+    return events
+
+
 def college_basketball():
     if not CBB_TOP25_MATCHUPS:
         return []
@@ -1234,7 +1278,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, other_banners]
+               march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
