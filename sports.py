@@ -142,7 +142,34 @@ CFB_RIVALRIES = [
     (201, 197),    # Oklahoma - Oklahoma State
     (259, 277),    # Virginia Tech - West Virginia
     (8, 99),       # Arkansas - LSU
+    (2306, 66),    # Kansas State - Iowa State
+    (228, 52),     # Clemson - Florida State
+    (245, 99),     # Texas A&M - LSU
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
+
+# Big program matchups: every regular-season game between any two of these schools.
+CFB_BIG_PROGRAMS = [
+    87,    # Notre Dame
+    228,   # Clemson
+    52,    # Florida State
+    2390,  # Miami
+    2483,  # Oregon
+    30,    # USC
+    130,   # Michigan
+    194,   # Ohio State
+    213,   # Penn State
+    84,    # Indiana
+    201,   # Oklahoma
+    251,   # Texas
+    245,   # Texas A&M
+    99,    # LSU
+    333,   # Alabama
+    2,     # Auburn
+    61,    # Georgia
+    57,    # Florida
+    2633,  # Tennessee
+]
+CFB_RIVALRIES += [(a, b) for i, a in enumerate(CFB_BIG_PROGRAMS) for b in CFB_BIG_PROGRAMS[i + 1:]]
 CBB_RIVALRIES = [
     (150, 153),   # Duke - North Carolina
 ]
