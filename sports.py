@@ -134,8 +134,8 @@ SOCCER_GROUPS = [
     ("Juventus / Inter / Milan", ("111", "110", "103"), "Italy", None),
     ("Bayern vs Dortmund", ("132", "124"), "Germany", None),
 ]
-# Champions League before the round of 16: games between any two of these clubs
-# (all the clubs above plus PSG).
+# Champions League big clubs (all the clubs above plus PSG): league-phase games between
+# any two of them, and knockout playoff-round games involving any one of them.
 UCL_BIG_CLUBS = {t for g in SOCCER_GROUPS for t in g[1]} | {"160"}   # 160 = PSG
 # Champions League: every weekend game, plus every game from these rounds on.
 UCL_KNOCKOUT_ROUNDS = ("round-of-16", "quarterfinals", "semifinals", "final")
@@ -653,7 +653,8 @@ def _soccer_title(comp, ranks=None, prefix=""):
 
 
 def _soccer_round(slug):
-    return {"round-of-16": "Round of 16", "quarterfinals": "Quarterfinal",
+    return {"knockout-round-playoffs": "Knockout Playoff", "round-of-16": "Round of 16",
+            "quarterfinals": "Quarterfinal",
             "semifinals": "Semifinal", "final": "Final"}.get(slug, slug.replace("-", " ").title())
 
 
@@ -735,17 +736,20 @@ def european_soccer():
                 add(ev, league, _soccer_title(comp, prefix="Champions League"), "Champions League",
                     "Champions League weekend")
 
-    # Champions League from the round of 16 on, any day.
+    # Champions League knockouts: the playoff round when a big club is involved, then
+    # every game from the round of 16 on.
     year = TODAY.year
-    for ev in _scoreboard_days("soccer/uefa.champions", date(year, 3, 1), date(year, 6, 7)):
+    for ev in _scoreboard_days("soccer/uefa.champions", date(year, 2, 1), date(year, 6, 7)):
         stage = (ev.get("season") or {}).get("slug", "")
-        if stage in UCL_KNOCKOUT_ROUNDS:
-            comp = ev["competitions"][0]
+        comp = ev["competitions"][0]
+        ids = {(c.get("team") or {}).get("id") for c in comp.get("competitors", [])}
+        playoff = stage == "knockout-round-playoffs" and ids & UCL_BIG_CLUBS
+        if stage in UCL_KNOCKOUT_ROUNDS or playoff:
             # "2nd Leg - Arsenal advance 3-1 on aggregate" -> "2nd Leg" (no spoilers)
             leg = _note(comp).split(" - ")[0] if "Leg" in _note(comp) else ""
             label = f"Champions League {_soccer_round(stage)}" + (f" {leg}" if leg else "")
             add(ev, "uefa.champions", _soccer_title(comp, prefix=label), "Champions League",
-                "Champions League knockout")
+                "Champions League playoff (big club)" if playoff else "Champions League knockout")
 
     # Domestic cup finals on a weekend.
     first, last = date(year, 4, 1), date(year, 6, 7)
