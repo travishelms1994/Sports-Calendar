@@ -734,16 +734,72 @@ def _involves_tcu(ev):
                for c in ev["competitions"][0].get("competitors", []))
 
 
+_CFB_RANKS = None
+CFB_RANK_SOURCE = "not loaded"
+CFB_RANK_SAVE = None
+
+
+def cfb_ranks():
+    """{team id: rank} for college football. The AP poll is locked in each Sunday at
+    2:00 PM CT (saved as cfb_ranks.json so the rest of the week reuses it). Once the
+    CFP committee rankings come out each Tuesday, they're used until the next Sunday
+    2:00 PM, when the new AP poll takes over."""
+    global _CFB_RANKS, CFB_RANK_SOURCE, CFB_RANK_SAVE
+    if _CFB_RANKS is not None:
+        return _CFB_RANKS
+    now = datetime.now(CENTRAL)
+    sunday = (now - timedelta(days=(now.weekday() - 6) % 7)).replace(hour=14, minute=0, second=0, microsecond=0)
+    if sunday > now:
+        sunday -= timedelta(days=7)   # before 2 PM Sunday: still last week's poll
+    season = nfl_season()
+    polls = fetch_json(f"{ESPN}/football/college-football/rankings").get("rankings", [])
+
+    def top25(poll):
+        return {r["team"]["id"]: r["current"] for r in poll.get("ranks", []) if r.get("current", 99) <= 25}
+
+    def this_season(poll):
+        return poll and (poll.get("season") or {}).get("year") == season
+
+    cfp = next((p for p in polls if p.get("type") == "cfp"), None)
+    if this_season(cfp) and parse_espn_date(cfp["date"]) >= sunday:
+        _CFB_RANKS, CFB_RANK_SOURCE = top25(cfp), f"CFP rankings ({cfp['date'][:10]})"
+        return _CFB_RANKS
+
+    week_of = sunday.strftime("%Y-%m-%d %H:%M")
+    try:
+        saved = fetch_json(f"{SITE_URL}/cfb_ranks.json", retries=1)
+    except (RuntimeError, ValueError):
+        saved = {}
+    if saved.get("week_of") == week_of and saved.get("ranks"):
+        _CFB_RANKS, CFB_RANK_SOURCE = saved["ranks"], f"AP poll locked {week_of} CT"
+        CFB_RANK_SAVE = saved
+        return _CFB_RANKS
+    ap = next((p for p in polls if p.get("type") == "ap"), None)
+    if this_season(ap) and parse_espn_date(ap["date"]).date() >= sunday.date():
+        _CFB_RANKS, CFB_RANK_SOURCE = top25(ap), f"AP poll locked {week_of} CT"
+        CFB_RANK_SAVE = {"week_of": week_of, "ranks": _CFB_RANKS}
+    else:
+        # This week's poll isn't out yet: keep last week's until it is.
+        _CFB_RANKS = saved.get("ranks") or (top25(ap) if this_season(ap) else {})
+        CFB_RANK_SOURCE = "AP poll (waiting for this week's)"
+        CFB_RANK_SAVE = saved or None
+    return _CFB_RANKS
+
+
 def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ranked_non_saturday=False):
-    """Every remaining regular-season game between two teams in the current AP Top 25,
+    """Every remaining regular-season game between two teams in the current Top 25,
     every game between the rivalry pairs (ranked or not), and every game where a
     "vs_ranked" team plays a current Top 25 team. Reads each team's schedule, so it
-    covers the rest of the season."""
-    polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
-    ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
-    ranks = {}
-    if ap and (ap.get("season") or {}).get("year") == season:  # this season's poll is out
-        ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    covers the rest of the season. College football uses cfb_ranks() (AP locked on
+    Sundays, CFP rankings once they're out); basketball uses the latest AP poll."""
+    if league == "football/college-football":
+        ranks = cfb_ranks()
+    else:
+        polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
+        ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
+        ranks = {}
+        if ap and (ap.get("season") or {}).get("year") == season:  # this season's poll is out
+            ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
     rivalries = {frozenset((str(a), str(b))) for a, b in rivalries}
     teams = set(ranks) | {t for pair in rivalries for t in pair}
     events, seen = [], set()
@@ -789,9 +845,7 @@ def p4_non_saturday(league):
     this_week = (current.get("week") or {}).get("number", 1)
     if (current.get("season") or {}).get("type") != 2:
         return events  # regular season is over
-    polls = fetch_json(f"{ESPN}/{league}/rankings").get("rankings", [])
-    ap = next((p for p in polls if p.get("name") == "AP Top 25"), {})
-    ranks = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    ranks = cfb_ranks()
     if CFB_WEEK_BANNERS:
         # Through the Saturday after Thanksgiving (4th Thursday of November).
         nov1 = date(nfl_season(), 11, 1)
@@ -834,6 +888,8 @@ def college_football():
             for ev in data.get("events", []):
                 note = _note(ev["competitions"][0])
                 if note in CFB_TITLE_GAMES and not _involves_tcu(ev):
+                    for c in ev["competitions"][0].get("competitors", []):   # this week's ranks
+                        c["curatedRank"] = {"current": cfb_ranks().get((c.get("team") or {}).get("id"), 99)}
                     matchup = _matchup(ev["competitions"][0], rank=True, use_location=True)[0]
                     title = note if "TBD" in matchup else f"{note}: {matchup}"
                     events.append(espn_event(ev, league, title, 3.5, "Conference Title"))
@@ -1462,7 +1518,7 @@ def main():
         raise SystemExit(f"Only {len(events)} events; something is wrong, not publishing.")
     write_ics(os.path.join(out_dir, "sports.ics"), events, CALENDAR_NAME,
               "Personal sports calendar. Updates every 4 hours. "
-              f"NFL seeds from: {NFL_SEED_SOURCE}.")
+              f"NFL seeds from: {NFL_SEED_SOURCE}. College football ranks from: {CFB_RANK_SOURCE}.")
     print(f"Wrote {len(events)} events to {out_dir}/sports.ics")
     # Save this week's NFL seeds so the rest of the week's runs reuse them.
     if _NFL_SEEDS and "standings feed" not in NFL_SEED_SOURCE:
@@ -1470,6 +1526,11 @@ def main():
         with open(os.path.join(out_dir, "nfl_seeds.json"), "w", encoding="utf-8") as f:
             json.dump({"week_of": NFL_SEED_WEEK, "as_of": as_of, "seeds": _NFL_SEEDS}, f, indent=1)
         print(f"NFL seeds for the week of {NFL_SEED_WEEK} (as of {as_of})")
+    # Save the locked AP poll so the rest of the week's runs reuse it.
+    if CFB_RANK_SAVE:
+        with open(os.path.join(out_dir, "cfb_ranks.json"), "w", encoding="utf-8") as f:
+            json.dump(CFB_RANK_SAVE, f, indent=1)
+    print(f"College football ranks: {CFB_RANK_SOURCE}")
 
 
 if __name__ == "__main__":
