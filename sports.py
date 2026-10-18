@@ -559,9 +559,63 @@ def cbb_ranks():
     return _CBB_RANKS
 
 
+_BASEBALL_RANKS = None
+BASEBALL_RANK_SOURCE = "not loaded"
+
+
+def _norm(name):
+    return re.sub(r"[^a-z0-9 ]", "", name.lower().replace("&", " and ")).strip()
+
+
+def baseball_ranks():
+    """{normalized school name: rank} from the latest D1Baseball Top 25, read from
+    Wikipedia's "<year> NCAA Division I baseball rankings" page (D1Baseball's own site
+    blocks automated requests). Empty until that season's page and preseason poll exist."""
+    global _BASEBALL_RANKS, BASEBALL_RANK_SOURCE
+    if _BASEBALL_RANKS is not None:
+        return _BASEBALL_RANKS
+    _BASEBALL_RANKS = {}
+    year = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year
+    page = f"{year}_NCAA_Division_I_baseball_rankings"
+    api = "https://en.wikipedia.org/w/api.php?format=json&action=parse&page=" + page
+    try:
+        sections = fetch_json(api + "&prop=sections", retries=2).get("parse", {}).get("sections", [])
+        index = next((x["index"] for x in sections if "D1Baseball" in x.get("line", "")), None)
+        if index is None:
+            BASEBALL_RANK_SOURCE = f"no D1Baseball poll yet for {year}"
+            return _BASEBALL_RANKS
+        html = fetch_json(api + f"&prop=text&section={index}", retries=2)["parse"]["text"]["*"]
+    except (RuntimeError, KeyError, ValueError):
+        BASEBALL_RANK_SOURCE = f"no D1Baseball poll yet for {year}"
+        return _BASEBALL_RANKS
+    cell = lambda c: re.sub(r"\s+", " ", re.sub(r"<[^>]+>|&#91;.*?&#93;", " ", c)).strip()
+    rows = [[cell(c) for c in re.findall(r"<t[dh][^>]*>(.*?)</t[dh]>", r, re.S)]
+            for r in re.findall(r"<tr[^>]*>(.*?)</tr>", html, re.S)]
+    ranked = [r for r in rows if r and re.fullmatch(r"\d+\.", r[0])]
+    if not ranked:
+        return _BASEBALL_RANKS
+    # Latest week = rightmost column that has a team in it
+    latest = max(i for i in range(1, len(ranked[0])) if any(i < len(r) and r[i] and not re.fullmatch(r"\d+\.", r[i]) for r in ranked))
+    header = next((r for r in rows if r and r[0] == "" and len(r) > latest), [])
+    for r in ranked:
+        if latest < len(r) and r[latest]:
+            team = re.sub(r"\s*\(.*?\)\s*$", "", r[latest])
+            _BASEBALL_RANKS[_norm(team)] = int(r[0].rstrip("."))
+    BASEBALL_RANK_SOURCE = f"D1Baseball {header[latest] if header else ''}".strip()
+    return _BASEBALL_RANKS
+
+
 def tcu_ranked_title(label, opponent):
     """ "TCU at #8 Texas Tech" / "#12 TCU vs Baylor": rankings on both teams for football
-    (this week's AP/CFP) and basketball (AP). Baseball titles stay as they are."""
+    (this week's AP/CFP), basketball (AP) and baseball (D1Baseball Top 25)."""
+    if label == "TCU Baseball":
+        found = re.match(r"(vs\.?|at)\s+(?:No\.\s*\d+\s+|#\d+\s+)?(.*)", opponent)
+        if not found:
+            return f"TCU {opponent}"
+        ranks = baseball_ranks()
+        tag = lambda n: f"#{ranks[_norm(n)]} " if _norm(n) in ranks else ""
+        name = found.group(2).strip()
+        return f"{tag('TCU')}TCU {found.group(1)} {tag(name)}{name}"
     if label not in ("TCU Football", "TCU Basketball"):
         return f"TCU {opponent}"
     league, ranks = (("football/college-football", cfb_ranks()) if label == "TCU Football"
@@ -1662,7 +1716,8 @@ def main():
         raise SystemExit(f"Only {len(events)} events; something is wrong, not publishing.")
     write_ics(os.path.join(out_dir, "sports.ics"), events, CALENDAR_NAME,
               "Personal sports calendar. Updates every 4 hours. "
-              f"NFL seeds from: {NFL_SEED_SOURCE}. College football ranks from: {CFB_RANK_SOURCE}.")
+              f"NFL seeds from: {NFL_SEED_SOURCE}. College football ranks from: {CFB_RANK_SOURCE}. "
+              f"TCU baseball ranks from: {BASEBALL_RANK_SOURCE}.")
     print(f"Wrote {len(events)} events to {out_dir}/sports.ics")
     # Save this week's NFL seeds so the rest of the week's runs reuse them.
     if _NFL_SEEDS and "standings feed" not in NFL_SEED_SOURCE:
