@@ -1410,35 +1410,47 @@ def golf_banners():
 
 
 def tennis():
+    """Grand Slams: men's singles matches from the round of 16 on, with seeds, plus a
+    banner for the days whose matches aren't posted yet. As each day's matches are
+    posted, that day leaves the banner; rest days before the latest posted day drop off,
+    so only match days stay on the calendar."""
     events = []
     for name, first, last, tv in TENNIS_SLAMS:
-        events.append(Event(uid=f"tennis-{name}-{first.year}".replace(" ", "-"),
-                            title=name, start=first, end=last, location=tv_label([tv]),
-                            categories=["Tennis"]))
+        short = name.replace(" (Tennis)", "")
+        matches = []
         # Round-of-16 pairings and times get posted a day or two ahead.
-        if not (first - timedelta(days=3) <= TODAY <= last + timedelta(days=1)):
-            continue
-        # During a Slam: add the matches from the round of 16 on.
-        data = fetch_json(f"{ESPN}/tennis/atp/scoreboard?dates={TODAY:%Y%m%d}")
-        for ev in data.get("events", []):
-            if not ev.get("major"):
-                continue
-            for group in ev.get("groupings", []):
-                if (group.get("grouping") or {}).get("displayName") != TENNIS_DRAW:
+        if first - timedelta(days=3) <= TODAY <= last + timedelta(days=1):
+            data = fetch_json(f"{ESPN}/tennis/atp/scoreboard?dates={TODAY:%Y%m%d}")
+            for ev in data.get("events", []):
+                if not ev.get("major"):
                     continue
-                for comp in group.get("competitions", []):
-                    rnd = (comp.get("round") or {}).get("displayName", "")
-                    if rnd not in TENNIS_ROUNDS:
+                for group in ev.get("groupings", []):
+                    if (group.get("grouping") or {}).get("displayName") != TENNIS_DRAW:
                         continue
-                    players = [((c.get("athlete") or {}).get("displayName") or "TBD")
-                               for c in comp.get("competitors", [])] or ["TBD", "TBD"]
-                    round_name = "R16" if rnd == "Round 4" else rnd
-                    title = f"{name.replace(' (Tennis)', '')} {round_name}: {' vs '.join(players)}"
-                    start = parse_espn_date(comp["date"])
-                    status = (comp.get("status") or {}).get("type") or {}
-                    events.append(Event(uid=f"espn-tennis-{comp['id']}", title=title, start=start,
-                                        location=tv_label([tv]), duration_hours=3.0,
-                                        categories=["Tennis"]))
+                    for comp in group.get("competitions", []):
+                        rnd = (comp.get("round") or {}).get("displayName", "")
+                        if rnd not in TENNIS_ROUNDS:
+                            continue
+
+                        def player(c):
+                            n = (c.get("athlete") or {}).get("displayName") or "TBD"
+                            seed = (c.get("curatedRank") or {}).get("current")
+                            return f"#{seed} {n}" if seed and seed < 99 else n
+
+                        players = [player(c) for c in comp.get("competitors", [])] or ["TBD", "TBD"]
+                        round_name = "R16" if rnd == "Round 4" else rnd
+                        matches.append(Event(uid=f"espn-tennis-{comp['id']}",
+                                             title=f"{short} {round_name}: {' vs '.join(players)}",
+                                             start=parse_espn_date(comp["date"]), location=tv_label([tv]),
+                                             duration_hours=3.0, categories=["Tennis"]))
+        events += matches
+        # Banner: only the days after the latest day that has posted matches.
+        posted = {central_date(m.start) for m in matches}
+        banner_first = max([first] + [d + timedelta(days=1) for d in posted])
+        if banner_first <= last:
+            events.append(Event(uid=f"tennis-{name}-{first.year}".replace(" ", "-"),
+                                title=name, start=banner_first, end=last, location=tv_label([tv]),
+                                categories=["Tennis"]))
     return events
 
 
