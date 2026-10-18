@@ -505,7 +505,7 @@ def tcu_games():
             opponent = re.sub(r"^TCU [^v@]*?(?=\b(vs|at)\b)", "", summary).strip()
             # "vs Kansas - Haunting at The Carter": promo name goes in the notes
             opponent, _, promo = opponent.partition(" - ")
-            title = f"TCU {opponent}"   # the emoji shows the sport
+            title = tcu_ranked_title(label, opponent)   # the emoji shows the sport
             start = parse_ics_datetime(raw["DTSTART"])
             if not isinstance(start, datetime):
                 title += " (time TBA)"
@@ -525,6 +525,57 @@ def tcu_games():
                 categories=[label],
             ))
     return events
+
+
+_TEAM_IDS = {}
+
+
+def team_id_by_name(league, name):
+    """ESPN team id for a school name like "Texas Tech" or "Kansas State"."""
+    if league not in _TEAM_IDS:
+        lookup = {}
+        for t in fetch_json(f"{ESPN}/{league}/teams?limit=1000")["sports"][0]["leagues"][0]["teams"]:
+            t = t["team"]
+            for key in (t.get("location"), t.get("shortDisplayName"), t.get("displayName"), t.get("abbreviation")):
+                if key:
+                    lookup.setdefault(key.lower(), t["id"])
+        _TEAM_IDS[league] = lookup
+    return _TEAM_IDS[league].get(name.strip().lower())
+
+
+_CBB_RANKS = None
+
+
+def cbb_ranks():
+    """{team id: rank} from this season's men's basketball AP poll (empty until it's out)."""
+    global _CBB_RANKS
+    if _CBB_RANKS is None:
+        season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year
+        polls = fetch_json(f"{ESPN}/basketball/mens-college-basketball/rankings").get("rankings", [])
+        ap = next((p for p in polls if p.get("name") == "AP Top 25"), None)
+        _CBB_RANKS = {}
+        if ap and (ap.get("season") or {}).get("year") == season:
+            _CBB_RANKS = {r["team"]["id"]: r["current"] for r in ap.get("ranks", []) if r.get("current", 99) <= 25}
+    return _CBB_RANKS
+
+
+def tcu_ranked_title(label, opponent):
+    """ "TCU at #8 Texas Tech" / "#12 TCU vs Baylor": rankings on both teams for football
+    (this week's AP/CFP) and basketball (AP). Baseball titles stay as they are."""
+    if label not in ("TCU Football", "TCU Basketball"):
+        return f"TCU {opponent}"
+    league, ranks = (("football/college-football", cfb_ranks()) if label == "TCU Football"
+                     else ("basketball/mens-college-basketball", cbb_ranks()))
+    found = re.match(r"(vs\.?|at)\s+(?:No\.\s*\d+\s+|#\d+\s+)?(.*)", opponent)
+    if not found:
+        return f"TCU {opponent}"
+    where, name = found.group(1), found.group(2).strip()
+
+    def tag(team_id):
+        r = ranks.get(str(team_id)) if team_id else None
+        return f"#{r} " if r else ""
+
+    return f"{tag('2628')}TCU {where} {tag(team_id_by_name(league, name))}{name}"
 
 
 def tv_label(channels):
@@ -988,6 +1039,8 @@ def college_football():
                 # Other bowls: only when both teams are set and both qualify
                 if P4_BOWLS and "Bowl" in note and _bowl_eligible(comp) and not _involves_tcu(ev):
                     bowl = re.sub(r"\s+Presented by.*$", "", note, flags=re.I)
+                    for c in comp.get("competitors", []):   # this week's AP/CFP ranks
+                        c["curatedRank"] = {"current": cfb_ranks().get((c.get("team") or {}).get("id"), 99)}
                     matchup = _matchup(comp, rank=True, use_location=True)[0].replace(" @ ", " vs ")
                     events.append(espn_event(ev, league, f"{bowl}: {matchup}", 3.5, "Bowl"))
                 continue
@@ -996,7 +1049,8 @@ def college_football():
             note = (note.replace("College Football Playoff", "CFP")
                         .replace(" at the ", " – "))
             note = re.sub(r"\s+Presented by.*$", "", note, flags=re.I)
-            matchup = _matchup(ev["competitions"][0], rank=False, use_location=True)[0]
+            # In CFP games ESPN's number for each team is its playoff seed (1-12)
+            matchup = _matchup(ev["competitions"][0], rank=True, use_location=True)[0].replace(" @ ", " vs ")
             title = note if "TBD" in matchup else f"{note}: {matchup}"
             events.append(espn_event(ev, league, title, 3.5, "CFP"))
     return events
