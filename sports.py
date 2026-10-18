@@ -612,6 +612,11 @@ def pro_team_games():
                         title = f"{espn_matchup_title(ev)} ({note})"
                     elif league == "football/nfl" and season_type == 2:
                         title = nfl_title(ev)   # with playoff seeds
+                    # Games at a special arena (e.g. Spurs in Austin) get the city tag here too
+                    arena = (ev["competitions"][0].get("venue") or {}).get("fullName") or ""
+                    place = next((p for _, a, p in NBA_VENUE_GAMES if a in arena), None) if league.endswith("nba") else None
+                    if place:
+                        title = f"{title or espn_matchup_title(ev)} ({place})"
                     events.append(espn_event(ev, league, title, hours, name, local_tv=local_tv))
     return events
 
