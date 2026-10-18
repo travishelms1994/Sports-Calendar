@@ -268,6 +268,27 @@ CBB_RIVALRIES = [
     (87, 2509),    # Notre Dame - Purdue
     (87, 84),      # Notre Dame - Indiana
     (2599, 2550),  # St. John's - Seton Hall
+    # Football rivalries carried over to basketball
+    (99, 145),     # LSU - Ole Miss
+    (251, 8),      # Texas - Arkansas
+    (2, 61),       # Auburn - Georgia
+    (2579, 228),   # South Carolina - Clemson
+    (61, 57),      # Georgia - Florida
+    (59, 61),      # Georgia Tech - Georgia
+    (57, 2390),    # Florida - Miami
+    (158, 2294),   # Nebraska - Iowa
+    (2294, 135),   # Iowa - Minnesota
+    (264, 265),    # Washington - Washington State
+    (2483, 204),   # Oregon - Oregon State
+    (333, 2633),   # Alabama - Tennessee
+    (52, 2390),    # Florida State - Miami
+    (275, 2294),   # Wisconsin - Iowa
+    (259, 277),    # Virginia Tech - West Virginia
+    (8, 99),       # Arkansas - LSU
+    (2306, 66),    # Kansas State - Iowa State
+    (245, 99),     # Texas A&M - LSU
+    (213, 221),    # Penn State - Pittsburgh
+    (38, 158),     # Colorado - Nebraska
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
 
