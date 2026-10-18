@@ -188,6 +188,7 @@ CFB_RIVALRIES = [
     (213, 221),    # Penn State - Pittsburgh
     (38, 158),     # Colorado - Nebraska
     (201, 158),    # Oklahoma - Nebraska
+    (153, 258),    # North Carolina - Virginia (South's Oldest Rivalry)
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
 # Texas Power Four vs Power Four schools in bordering states, ranked or not.
@@ -289,6 +290,13 @@ CBB_RIVALRIES = [
     (245, 99),     # Texas A&M - LSU
     (213, 221),    # Penn State - Pittsburgh
     (38, 158),     # Colorado - Nebraska
+    (356, 142),    # Illinois - Missouri (Braggin' Rights)
+    (269, 156),    # Marquette - Creighton
+    (2086, 2752),  # Butler - Xavier
+    (150, 152),    # Duke - NC State
+    (153, 258),    # North Carolina - Virginia
+    (97, 235),     # Louisville - Memphis
+    (150, 120),    # Duke - Maryland
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
 
