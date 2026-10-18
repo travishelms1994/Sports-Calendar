@@ -180,6 +180,9 @@ CFB_RIVALRIES = [
     (127, 87),     # Michigan State - Notre Dame (Megaphone Trophy)
     (2509, 87),    # Purdue - Notre Dame (Shillelagh Trophy)
     (2132, 97),    # Cincinnati - Louisville (Keg of Nails)
+    (213, 221),    # Penn State - Pittsburgh
+    (38, 158),     # Colorado - Nebraska
+    (201, 158),    # Oklahoma - Nebraska
 ] + [(a, b) for i, a in enumerate(TEXAS_P4) for b in TEXAS_P4[i + 1:]]   # Texas P4 vs each other
 
 # Texas Power Four vs Power Four schools in bordering states, ranked or not.
