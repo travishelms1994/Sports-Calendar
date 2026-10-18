@@ -114,11 +114,16 @@ EARLY_TOURNAMENTS = {"Maui Invitational": "Maui Invitational", "Players Era": "P
 CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
 CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
 COLLEGE_FOOTBALL_PLAYOFF = True
-# Non-CFP bowl games where both teams are from a Power Four conference
+# Non-CFP bowl games where BOTH teams are Power Four (Notre Dame counts), a Texas
+# Group of Five school, a currently ranked team, or one of BOWL_EXTRA_TEAMS.
 # (ESPN conference ids: ACC 1, Big 12 4, Big Ten 5, SEC 8).
 P4_BOWLS = True
 P4_CONFERENCES = ("1", "4", "5", "8")
 P4_EXTRA_TEAMS = ("87",)   # Notre Dame (independent) counts as Power Four
+BOWL_EXTRA_TEAMS = [204, 265, 68, 349, 2426, 2655, 235]   # Oregon State, Washington State, Boise State,
+                                                         # Army, Navy, Tulane, Memphis
+# Any ranked Texas FBS school (Power Four, TCU or Group of Five) vs a Power Four opponent.
+RANKED_TEXAS_VS_P4 = True
 # Regular-season games between two Power Four teams played on any day but Saturday
 # (Thursday/Friday nights, Black Friday, etc.), plus an all-day
 # "College Football Week N" banner on each Saturday.
@@ -792,7 +797,8 @@ def cfb_ranks():
     return _CFB_RANKS
 
 
-def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ranked_non_saturday=False):
+def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ranked_non_saturday=False,
+                   ranked_team_vs_p4=()):
     """Every remaining regular-season game between two teams in the current Top 25,
     every game between the rivalry pairs (ranked or not), and every game where a
     "vs_ranked" team plays a current Top 25 team. Reads each team's schedule, so it
@@ -820,8 +826,12 @@ def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ran
             # Any ranked team playing on a day other than Saturday
             ranked_weeknight = (ranked_non_saturday and any(i in ranks for i in ids)
                                 and game_day(ev).weekday() != 5)
+            # A ranked team from `ranked_team_vs_p4` (Texas schools) vs a Power Four opponent
+            texas_vs_p4 = bool(ranked_team_vs_p4) and any(
+                a in ranks and a in ranked_team_vs_p4 and b in p4_team_ids()
+                for a in ids for b in ids if a != b)
             wanted = (all(i in ranks for i in ids) or frozenset(ids) in rivalries or ranked_vs_big
-                      or ranked_weeknight)
+                      or ranked_weeknight or texas_vs_p4)
             if ev["id"] in seen or not wanted or _involves_tcu(ev):
                 continue
             if game_day(ev) < TODAY:
@@ -832,6 +842,31 @@ def top25_matchups(league, season, label, hours, rivalries=(), vs_ranked=(), ran
             events.append(espn_event(ev, league, hours=hours, category=label,
                                      rank=True, use_location=True))
     return events
+
+
+_P4_IDS = None
+
+
+def p4_team_ids():
+    """Every Power Four team's ESPN id (from the conference standings) plus Notre Dame."""
+    global _P4_IDS
+    if _P4_IDS is None:
+        _P4_IDS = set(P4_EXTRA_TEAMS)
+        for group in P4_CONFERENCES:
+            data = fetch_json("https://site.api.espn.com/apis/v2/sports/football/college-football/"
+                              f"standings?group={group}&season={nfl_season()}")
+            for part in [data] + data.get("children", []):
+                for row in (part.get("standings") or {}).get("entries", []):
+                    _P4_IDS.add(row["team"]["id"])
+    return _P4_IDS
+
+
+def _bowl_eligible(comp):
+    """Both teams Power Four, Texas Group of Five, currently ranked, or a bowl extra."""
+    extra = {str(t) for t in BOWL_EXTRA_TEAMS + TEXAS_G6} | set(cfb_ranks()) | p4_team_ids()
+    teams = [(c.get("team") or {}) for c in comp.get("competitors", [])]
+    return len(teams) == 2 and all(t.get("id") in extra or t.get("conferenceId") in P4_CONFERENCES
+                                   for t in teams)
 
 
 def _both_p4(comp):
@@ -903,8 +938,11 @@ def college_football():
         # Big programs and Texas Power Four teams also count against any current Top 25
         # team, even when they're unranked themselves.
         # Also any ranked team playing on a day other than Saturday.
+        # And any ranked Texas school vs a Power Four opponent.
+        texas_schools = {str(t) for t in TEXAS_P4 + TEXAS_G6 + [2628]} if RANKED_TEXAS_VS_P4 else set()
         events += top25_matchups(league, nfl_season(), "Top 25", 3.5, CFB_RIVALRIES,
-                                 CFB_BIG_PROGRAMS + TEXAS_P4, ranked_non_saturday=True)
+                                 CFB_BIG_PROGRAMS + TEXAS_P4, ranked_non_saturday=True,
+                                 ranked_team_vs_p4=texas_schools)
     if P4_NON_SATURDAY:
         events += p4_non_saturday(league)
     if COLLEGE_FOOTBALL_PLAYOFF or P4_BOWLS:
@@ -913,8 +951,8 @@ def college_football():
             comp = ev["competitions"][0]
             note = _note(comp)
             if "College Football Playoff" not in note:
-                # Other bowls: only when both teams are set and both are Power Four
-                if P4_BOWLS and "Bowl" in note and _both_p4(comp) and not _involves_tcu(ev):
+                # Other bowls: only when both teams are set and both qualify
+                if P4_BOWLS and "Bowl" in note and _bowl_eligible(comp) and not _involves_tcu(ev):
                     bowl = re.sub(r"\s+Presented by.*$", "", note, flags=re.I)
                     matchup = _matchup(comp, rank=True, use_location=True)[0].replace(" @ ", " vs ")
                     events.append(espn_event(ev, league, f"{bowl}: {matchup}", 3.5, "Bowl"))
