@@ -454,6 +454,15 @@ OTHER_BANNERS = [
     ("Big Ten Tournament: Championship", date(2027, 3, 14), None, "Gainbridge Fieldhouse, Indianapolis"),
 ]
 
+# Kickoff times announced (e.g. on a team's X account) before ESPN has them.
+# Used only while ESPN still says "time TBA"; once ESPN posts a time, ESPN's
+# wins and the entry does nothing (old entries can be deleted any time).
+# (ESPN game id, local start, TV or "" to leave TV as is, where it was announced)
+TIME_OVERRIDES = [
+    ("401858505", datetime(2026, 10, 31, 12, 30, tzinfo=ZoneInfo("America/Los_Angeles")), "Peacock",
+     "Northwestern @ Oregon, Oregon football on X, 10/19"),
+]
+
 # Emoji at the front of each event title, by category.
 EMOJI = {
     "TCU Football": "\U0001F438\U0001F3C8",     # frog + ball
@@ -1807,6 +1816,15 @@ def main():
             events.append(e)
             kept += 1
         print(f"{source.__name__:16} {kept:4} events")
+
+    # Hand-entered kickoff times for games ESPN still has as "time TBA".
+    for game_id, start, tv, _source in TIME_OVERRIDES:
+        for e in events:
+            if e.uid.endswith(f"-{game_id}") and "(time TBA)" in e.title:
+                e.start, e.end = start, None
+                e.title = e.title.replace(" (time TBA)", "")
+                if tv and e.location.endswith("TV TBA"):
+                    e.location = tv_label([tv])
 
     # On College Football Week Saturdays, "time TBA" games go at 11:58-11:59 PM
     # instead of all-day, so the week banner is the only all-day item (on top) and
