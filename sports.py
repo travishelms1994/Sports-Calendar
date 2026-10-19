@@ -1,4 +1,4 @@
-﻿"""Builds site/sports.ics: a self-updating sports calendar.
+"""Builds site/sports.ics: a self-updating sports calendar.
 
 Runs every day on GitHub Actions. Every run rebuilds the whole file from the
 sources below, so times that get set, new games, playoff matchups, this week's
@@ -406,6 +406,14 @@ HORSE_RACES = [
     ("Belmont Stakes", date(2027, 6, 5), None, "Belmont Park, Elmont, NY", "Fox"),
 ]
 
+# UFC: numbered cards (UFC 333, UFC 334...) with at least one title fight,
+# interim titles included. Fight Nights are left out. The event starts at the
+# estimated main event time (main card start + this many hours).
+UFC_TITLE_CARDS = True
+UFC_MAIN_EVENT_DELAY_HOURS = 2
+UFC_TV = "Paramount+"   # used when ESPN lists no channel
+UFC_DAYS_AHEAD = 180
+
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
 # (name, first day, last day, notes)
 OTHER_BANNERS = [
@@ -474,6 +482,7 @@ EMOJI = {
     "Germany": "\U0001F1E9\U0001F1EA⚽",
     "Champions League": "\U0001F3C6⚽",
     "Horse Racing": "\U0001F40E",   # horse
+    "UFC": "\U0001F94A\U0001F3C6",      # boxing glove + trophy
     "Golf": "⛳",                   # flag in hole
     "Tennis": "\U0001F3BE",             # tennis
     "Olympics": "\U0001F3C5",           # medal
@@ -1655,6 +1664,68 @@ def horse_races():
     return events
 
 
+def _ufc_last_name(athlete):
+    """"A. Volkanovski" -> "Volkanovski" (keeps two-word surnames like "Saint Denis")."""
+    short = athlete.get("shortName") or athlete.get("displayName") or "TBA"
+    return short.split(". ", 1)[1] if ". " in short else short.split()[-1]
+
+
+def ufc_title_cards():
+    if not UFC_TITLE_CARDS:
+        return []
+    first = (TODAY - timedelta(days=2)).strftime("%Y%m%d")
+    last = (TODAY + timedelta(days=UFC_DAYS_AHEAD)).strftime("%Y%m%d")
+    board = fetch_json(f"{ESPN}/mma/ufc/scoreboard?dates={first}-{last}&limit=100")
+    core = "https://sports.core.api.espn.com/v2/sports/mma/leagues/ufc/events"
+    events = []
+    for ev in board.get("events", []):
+        name = ev.get("name") or ""
+        number = re.match(r"UFC (\d+)\b", name)
+        if not number:   # Fight Nights, Contender Series
+            continue
+        segments, titles = {}, []
+        for comp in ev.get("competitions", []):
+            detail = fetch_json(f"{core}/{ev['id']}/competitions/{comp['id']}")
+            start = parse_espn_date(comp["date"])
+            seg = (detail.get("cardSegment") or {}).get("description") or "Main Card"
+            segments[seg] = min(segments.get(seg, start), start)
+            belt = next((t.get("text") for t in detail.get("types") or [] if "Title" in (t.get("text") or "")), None)
+            if not belt:
+                continue
+            fighters = [c.get("athlete") or {} for c in comp.get("competitors", [])]
+            # Same order as the card's billing ("UFC 334: Gane vs. Hokit")
+            fighters.sort(key=lambda f: name.find(_ufc_last_name(f)) % 1000)
+            division = (comp.get("type") or {}).get("abbreviation") or belt.replace("UFC ", "").replace(" Title", "")
+            division = division.replace("W ", "Women's ")
+            if "interim" in belt.lower():
+                division += " (interim)"
+            titles.append((detail.get("matchNumber") or 99, division, fighters, comp))
+        if not titles:
+            continue
+        titles.sort(key=lambda t: t[0])
+        main_card = segments.get("Main Card") or min(segments.values())
+        main_event = main_card + timedelta(hours=UFC_MAIN_EVENT_DELAY_HOURS)
+        short = " + ".join("/".join(_ufc_last_name(f) for f in fighters) for _, _, fighters, _ in titles)
+        lines = ["Title fights:"]
+        for i, (_, division, fighters, _) in enumerate(titles):
+            role = {1: " (main event)", 2: " (co-main)"}.get(titles[i][0], "")
+            lines.append(f"• {division}: " + " vs. ".join(f.get("displayName") or "TBA" for f in fighters) + role)
+        clock = lambda dt: dt.astimezone(CENTRAL).strftime("%I:%M %p").lstrip("0")
+        lines += ["", f"Main event {clock(main_event)} CT (approx.)",
+                  " · ".join(f"{seg} {clock(t)} CT" for seg, t in sorted(segments.items(), key=lambda x: x[1], reverse=True))]
+        venue = ev["competitions"][0].get("venue") or {}
+        where = ", ".join(x for x in (venue.get("fullName"), (venue.get("address") or {}).get("city")) if x)
+        if where:
+            lines.append(where)
+        tv = espn_tv(titles[0][3])
+        if tv.endswith("TV TBA"):
+            tv = tv_label([UFC_TV])
+        events.append(Event(uid=f"ufc-{number.group(1)}", title=f"UFC {number.group(1)}: {short}",
+                            start=main_event, location=tv, description="\n".join(lines),
+                            duration_hours=1.0, categories=["UFC"]))
+    return events
+
+
 def other_banners():
     def category(name):
         for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness"),
@@ -1681,7 +1752,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, other_banners]
+               march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, ufc_title_cards, other_banners]
     cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
     seen, events = set(), []
     for source in sources:
