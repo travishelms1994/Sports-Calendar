@@ -457,10 +457,12 @@ OTHER_BANNERS = [
 # Kickoff times announced (e.g. on a team's X account) before ESPN has them.
 # Used only while ESPN still says "time TBA"; once ESPN posts a time, ESPN's
 # wins and the entry does nothing (old entries can be deleted any time).
+# Only add a time after checking it independently (FBSchedules TV selections, or the
+# school/conference announcement); never on word of mouth alone.
 # (ESPN game id, local start, TV or "" to leave TV as is, where it was announced)
 TIME_OVERRIDES = [
     ("401858505", datetime(2026, 10, 31, 12, 30, tzinfo=ZoneInfo("America/Los_Angeles")), "Peacock",
-     "Northwestern @ Oregon, Oregon football on X, 10/19"),
+     "Northwestern @ Oregon, verified on FBSchedules Oct 31 TV selections (3:30 ET) and OregonLive/SI, 10/19"),
 ]
 
 # Emoji at the front of each event title, by category.
