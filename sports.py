@@ -109,7 +109,8 @@ CBB_TOP25_MATCHUPS = True   # men's college basketball; starts once the season's
 # Men's college basketball in March: every NCAA tournament game, and these conferences'
 # tournament games from the quarterfinals on, with matchups and times as they're set.
 MARCH_MADNESS_GAMES = True
-# Early-season tournaments: ESPN name -> label. Final (and Maui semifinals).
+# Early-season tournaments: ESPN name -> label. Semifinals and final of each
+# (Players Era runs two events, the Eight and the Sixteen, each with its own).
 EARLY_TOURNAMENTS = {"Maui Invitational": "Maui Invitational", "Players Era": "Players Era"}
 CBB_CONF_TOURNAMENTS = ("ACC", "Big 12", "Big East", "SEC", "Big Ten")
 CBB_CONF_ROUNDS = ("Quarterfinal", "Semifinal", "Final")
@@ -1553,31 +1554,48 @@ def march_basketball():
 
 
 def early_season_tournaments():
-    """Maui Invitational semifinals and final, Players Era final (late November).
-    ESPN labels the finals; Maui semifinals are worked out from the bracket: the
-    day-two games between two first-round winners."""
+    """Semifinals and finals of the Maui Invitational and both Players Era events
+    (the Eight and the Sixteen), late November. ESPN labels the finals; the
+    semifinals are worked out from the bracket: the games the day before the
+    final between two teams that haven't lost yet in the tournament."""
     events = []
     league = "basketball/mens-college-basketball"
     games = [ev for ev in _scoreboard_days(league, date(TODAY.year, 11, 15), date(TODAY.year, 12, 5),
                                            "&groups=50&limit=400")
              if any(t in _note(ev["competitions"][0]) for t in EARLY_TOURNAMENTS)]
-    for name in EARLY_TOURNAMENTS:
-        mine = sorted((ev for ev in games if name in _note(ev["competitions"][0])), key=lambda ev: ev["date"])
+    # One bracket per ESPN event name: "Southwest Maui Invitational",
+    # "Players Era Eight", "Players Era Sixteen"
+    brackets = {}
+    for ev in games:
+        brackets.setdefault(_note(ev["competitions"][0]).split(" - ")[0].strip(), []).append(ev)
+    for bracket, mine in brackets.items():
+        name = next(t for t in EARLY_TOURNAMENTS if t in bracket)
+        display = bracket[bracket.index(name):]   # drop the sponsor ("Southwest ...")
+        if display == name:
+            display = EARLY_TOURNAMENTS[name]
+        mine.sort(key=lambda ev: ev["date"])
         days = sorted({game_day(ev) for ev in mine})
-        first_round_winners = {c["team"]["id"] for ev in mine if days and game_day(ev) == days[0]
-                               for c in ev["competitions"][0]["competitors"] if c.get("winner")}
+        semi_day = days[-2] if len(days) > 1 else None
+        wins, losses = set(), set()
         for ev in mine:
+            if semi_day and game_day(ev) < semi_day:
+                for c in ev["competitions"][0]["competitors"]:
+                    if c.get("winner") is True:
+                        wins.add(c["team"]["id"])
+                    elif c.get("winner") is False and ev["competitions"][0].get("status", {}).get("type", {}).get("completed"):
+                        losses.add(c["team"]["id"])
+        unbeaten = wins - losses
+        for ev in mine:
+            if _involves_tcu(ev):
+                continue  # TCU's own feed has these
             comp = ev["competitions"][0]
             note = _note(comp)
             ids = {c["team"]["id"] for c in comp["competitors"]}
             if note.endswith("Championship"):
-                # "Players Era Sixteen - Championship" -> "Players Era Sixteen Final"
-                # (Players Era runs two events, the Eight and the Sixteen, each with a final)
-                event_name = note.rsplit(" - ", 1)[0].strip()
-                label = f"{event_name if event_name.startswith(name) else EARLY_TOURNAMENTS[name]} Final"
-            elif (EARLY_TOURNAMENTS[name] == "Maui Invitational" and len(days) > 1
-                  and game_day(ev) == days[1] and ids <= first_round_winners):
-                label = f"{EARLY_TOURNAMENTS[name]} Semifinal"
+                label = f"{display} Final"
+            elif (game_day(ev) == semi_day and "Place" not in note
+                  and len(ids) == 2 and ids <= unbeaten):
+                label = f"{display} Semifinal"
             else:
                 continue
             matchup = _matchup(comp, rank=True, use_location=True)[0]
