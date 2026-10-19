@@ -1571,7 +1571,10 @@ def early_season_tournaments():
             note = _note(comp)
             ids = {c["team"]["id"] for c in comp["competitors"]}
             if note.endswith("Championship"):
-                label = f"{EARLY_TOURNAMENTS[name]} Final"
+                # "Players Era Sixteen - Championship" -> "Players Era Sixteen Final"
+                # (Players Era runs two events, the Eight and the Sixteen, each with a final)
+                event_name = note.rsplit(" - ", 1)[0].strip()
+                label = f"{event_name if event_name.startswith(name) else EARLY_TOURNAMENTS[name]} Final"
             elif (EARLY_TOURNAMENTS[name] == "Maui Invitational" and len(days) > 1
                   and game_day(ev) == days[1] and ids <= first_round_winners):
                 label = f"{EARLY_TOURNAMENTS[name]} Semifinal"
