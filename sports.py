@@ -376,6 +376,7 @@ MLB_ROUND_NAMES = {"ALWC": "AL Wild Card", "NLWC": "NL Wild Card"}
 # Golf: all-day banners for these events (read from ESPN's golf calendar).
 # ESPN label: (title, TV)
 GOLF_EVENTS = {
+    "THE PLAYERS Championship": ("The Players Championship", "Golf Channel Thu-Fri, NBC Sat-Sun, Peacock"),
     "Masters Tournament": ("Masters", "ESPN Thu-Fri, CBS Sat-Sun"),
     "PGA Championship": ("PGA Championship", "ESPN Thu-Fri, CBS Sat-Sun"),
     "U.S. Open": ("U.S. Open (Golf)", "USA Thu-Fri, NBC Sat-Sun, Peacock"),
