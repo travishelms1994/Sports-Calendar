@@ -75,6 +75,7 @@ NBA_VENUE_GAMES = [
     ("24", "Moody Center", "Austin"),   # Spurs home games in Austin
 ]
 # NBA Cup knockout rounds to include (ESPN labels).
+NBA_OPENING_NIGHT = True   # every game on the first day of the regular season
 NBA_CUP_ROUNDS = {"NBA Cup - Semifinals": "NBA Cup Semifinal", "NBA Cup Championship": "NBA Cup Final"}
 
 # TV shown in place of the location. Out-of-market services are left out.
@@ -1475,6 +1476,22 @@ def nba_regular_season():
                 continue   # listed Out for this game: leave it off
             tag = f" ({name} questionable)" if status == "questionable" else ""
             add_visit(ev, f"{espn_matchup_title(ev)} ({label}){tag}")
+
+    # Opening night: every game on the first day of the regular season (late
+    # October). These replace a rivalry version of the same game so the title
+    # says it's opening night.
+    if NBA_OPENING_NIGHT and TODAY <= date(season - 1, 11, 5):
+        day = date(season - 1, 10, 1)
+        while day <= date(season - 1, 11, 5):
+            board = fetch_json(f"{ESPN}/{league}/scoreboard?dates={day:%Y%m%d}")
+            opening = [ev for ev in board.get("events", []) if (ev.get("season") or {}).get("type") == 2]
+            if opening:
+                for ev in opening:
+                    events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
+                    events.append(espn_event(ev, league, f"{espn_matchup_title(ev)} (Opening Night)", 2.5,
+                                             "NBA", local_tv=NBA_LOCAL_TV))
+                break
+            day += timedelta(days=1)
 
     # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
     # version of the same game so the title says it's the Cup.
