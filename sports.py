@@ -92,7 +92,7 @@ NBA_TIER2 = {
     2: (2, ["Paul George", "Derrick White", "Payton Pritchard"]),                        # Celtics
     8: (2, ["Jalen Duren", "Ausar Thompson"]),                                           # Pistons
     5: (2, ["James Harden", "Evan Mobley", "Jarrett Allen"]),                            # Cavaliers
-    19: (2, ["Paolo Banchero", "Franz Wagner"]),                                         # Magic
+    19: (2, ["Paolo Banchero", "Franz Wagner", "Desmond Bane"]),                         # Magic
     11: (2, ["Pascal Siakam", "Ivica Zubac", "Andrew Nembhard"]),                        # Pacers
     30: (2, ["Kon Knueppel", "Brandon Miller"]),                                         # Hornets
     27: (2, ["Anthony Davis", "AJ Dybantsa", "Trae Young"]),                             # Wizards
