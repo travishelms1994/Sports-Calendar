@@ -105,8 +105,7 @@ NBA_TIER2 = {
     26: (2, ["Keyonte George", "Darryn Peterson", "Jaren Jackson Jr.", "Lauri Markkanen"]),  # Jazz
     12: (2, ["Darius Garland", "Brandon Ingram", "Keaton Wagler"]),                      # Clippers
     23: (2, ["Domantas Sabonis", "Darius Acuff"]),                                       # Kings
-    22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija", "Donovan Clingan",
-             "Toumani Camara"]),                                                          # Trail Blazers
+    22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija"]),             # Trail Blazers
     6: (2, ["Kyrie Irving", "Daniel Gafford", "PJ Washington", "Dereck Lively II"]),     # Mavericks
     29: (2, ["Cameron Boozer", "Cedric Coward", "Zach Edey", "Ty Jerome"]),              # Grizzlies
     17: (2, ["Michael Porter Jr.", "Julius Randle", "Mikel Brown Jr.", "Egor Demin"]),   # Nets
