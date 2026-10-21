@@ -114,6 +114,7 @@ NBA_TIER2 = {
     1: (3, ["CJ McCollum", "Kingston Flemings", "Onyeka Okongwu", "Luguentz Dort",
             "Nickeil Alexander-Walker"]),                                                 # Hawks
     4: (2, ["Norman Powell", "Josh Giddey", "Matas Buzelis"]),                           # Bulls
+    21: (2, ["Dillon Brooks", "Jalen Green", "Miles Bridges"]),                          # Suns
 }
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
