@@ -117,6 +117,20 @@ NBA_TIER2 = {
     21: (2, ["Dillon Brooks", "Jalen Green", "Miles Bridges"]),                          # Suns
     28: (2, ["Scottie Barnes", "RJ Barrett", "Collin Murray-Boyles"]),                   # Raptors
 }
+# Team overrides on top of the tiers.
+# Extra "comes off" groups: if EVERY player in a group is out, the game comes off
+# (in addition to the team's Tier 1 / Tier 2 rules).
+NBA_ALSO_OFF = {
+    20: [["Tyrese Maxey", "Jaylen Brown"]],   # 76ers: both Maxey and Brown out
+}
+# Star-and-depth rules that REPLACE a team's Tier 1 / Tier 2:
+# team id -> (star, core pair, bench, bench needed playing when the star is out)
+#   star out:                   stays only if both core play AND that many bench play
+#   star plays, both core out:  stays only if ALL the bench plays
+NBA_STAR_DEPTH = {
+    25: ("Shai Gilgeous-Alexander", ["Jalen Williams", "Chet Holmgren"],
+         ["Alex Caruso", "Cason Wallace", "Ajay Mitchell", "Isaiah Hartenstein"], 2),   # Thunder
+}
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
 # even if that's next season. Day-To-Day/Questionable gets a "(questionable)" tag.
@@ -1590,6 +1604,22 @@ def nba_injury_reason(event):
     Tier 2 threshold met), or None to keep it. Out = Out or Doubtful."""
     for tid in getattr(event, "team_ids", []):
         team = int(tid) if tid and tid.isdigit() else None
+        out = lambda names: [a for a in nba_listed_ids(team, names) if nba_availability(a, event.day, team) == "out"]
+        if team in NBA_STAR_DEPTH:   # replaces this team's Tier 1 / Tier 2
+            star, core, bench, bench_needed = NBA_STAR_DEPTH[team]
+            star_ids = nba_listed_ids(team, [star])
+            bench_ids = nba_listed_ids(team, bench)
+            bench_playing = len(bench_ids) - len(out(bench))
+            if out([star]) and star_ids:
+                if out(core) or bench_playing < bench_needed:
+                    return (f"{star} out, and " + (f"{', '.join(_athlete_name(team, a) for a in out(core))} out"
+                            if out(core) else f"only {bench_playing} of {len(bench)} bench playing"))
+            elif len(out(core)) == len(core) and bench_playing < len(bench_ids):
+                return f"{' and '.join(core)} out, and {', '.join(_athlete_name(team, a) for a in out(bench))} out"
+            continue
+        for group in NBA_ALSO_OFF.get(team, []):
+            if len(nba_listed_ids(team, group)) == len(group) and len(out(group)) == len(group):
+                return f"Override: {' and '.join(group)} out"
         for athlete in nba_listed_ids(team, NBA_TIER1.get(team, [])) if team in NBA_TIER1 else []:
             if nba_availability(athlete, event.day, team) == "out":
                 return f"Tier 1: {_athlete_name(team, athlete)} out"
@@ -1603,6 +1633,9 @@ def nba_injury_reason(event):
 
 def _athlete_name(team, athlete):
     names = NBA_TIER1.get(team, []) + NBA_TIER2.get(team, (0, []))[1]
+    if team in NBA_STAR_DEPTH:
+        star, core, bench, _ = NBA_STAR_DEPTH[team]
+        names += [star] + core + bench
     return next((n for n in names if _NBA_ROSTERS[team].get(_player_key(n)) == athlete), athlete)
 
 
