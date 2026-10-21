@@ -113,6 +113,7 @@ NBA_TIER2 = {
     15: (2, ["Tyler Herro", "Myles Turner", "Brayden Burries"]),                         # Bucks
     1: (3, ["CJ McCollum", "Kingston Flemings", "Onyeka Okongwu", "Luguentz Dort",
             "Nickeil Alexander-Walker"]),                                                 # Hawks
+    4: (2, ["Norman Powell", "Josh Giddey", "Matas Buzelis"]),                           # Bulls
 }
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
@@ -1426,11 +1427,32 @@ def college_baseball_postseason():
 _NBA_INJURIES = None
 
 
-def nba_availability(athlete, day):
+_NBA_NEXT_GAME = {}
+
+
+def nba_next_game_day(team):
+    """The day of a team's next regular-season game that hasn't finished yet."""
+    team = str(team)
+    if team not in _NBA_NEXT_GAME:
+        days = []
+        try:
+            data = fetch_json(f"{ESPN}/basketball/nba/teams/{team}/schedule?season={nba_season()}&seasontype=2")
+            for ev in data.get("events", []):
+                done = ((ev["competitions"][0].get("status") or {}).get("type") or {}).get("completed")
+                if not done and game_day(ev) >= TODAY:
+                    days.append(game_day(ev))
+        except RuntimeError:
+            pass
+        _NBA_NEXT_GAME[team] = min(days) if days else None
+    return _NBA_NEXT_GAME[team]
+
+
+def nba_availability(athlete, day, team=None):
     """'out', 'questionable' or 'ok' for a player in a game on `day`, from ESPN's
     injury report. Out counts if his expected return is after the game (or, with no
-    return date, the game is within two weeks); Doubtful counts as Out for games
-    within 3 days. Questionable/Day-To-Day only for games within 3 days."""
+    return date, the game is within two weeks). Doubtful (counts as Out) and
+    Questionable/Day-To-Day are game-to-game calls, so they apply only to his
+    team's next game (`team` given), or games within 3 days if the team isn't known."""
     global _NBA_INJURIES
     if _NBA_INJURIES is None:
         _NBA_INJURIES = {}
@@ -1448,9 +1470,10 @@ def nba_availability(athlete, day):
     days_away = (day - TODAY).days
     if status == "out" and ((back and back > str(day)) or (not back and days_away <= 14)):
         return "out"
-    if status == "doubtful" and days_away <= 3:
+    next_game = (day == nba_next_game_day(team)) if team else days_away <= 3
+    if status == "doubtful" and next_game:
         return "out"   # doubtful: assume he sits
-    if status in ("day-to-day", "questionable") and days_away <= 3:
+    if status in ("day-to-day", "questionable") and next_game:
         return "questionable"
     return "ok"
 
@@ -1563,11 +1586,11 @@ def nba_injury_reason(event):
     for tid in getattr(event, "team_ids", []):
         team = int(tid) if tid and tid.isdigit() else None
         for athlete in nba_listed_ids(team, NBA_TIER1.get(team, [])) if team in NBA_TIER1 else []:
-            if nba_availability(athlete, event.day) == "out":
+            if nba_availability(athlete, event.day, team) == "out":
                 return f"Tier 1: {_athlete_name(team, athlete)} out"
         if team in NBA_TIER2:
             need, names = NBA_TIER2[team]
-            out = [a for a in nba_listed_ids(team, names) if nba_availability(a, event.day) == "out"]
+            out = [a for a in nba_listed_ids(team, names) if nba_availability(a, event.day, team) == "out"]
             if len(out) >= need:
                 return f"Tier 2: {', '.join(_athlete_name(team, a) for a in out)} out"
     return None
@@ -1639,7 +1662,7 @@ def nba_regular_season():
                     add_visit(ev, f"{seeded_matchup(ev)} ({label})")
                     break
                 continue   # he didn't play: the return is still to come
-            status = nba_availability(athlete, game_day(ev))
+            status = nba_availability(athlete, game_day(ev), visitor)
             if status == "out":
                 continue   # listed Out for this one: the next visit is the return
             tag = f" ({name} questionable)" if status == "questionable" else ""
@@ -1657,7 +1680,7 @@ def nba_regular_season():
             continue
         for ev in visits(team, host):
             completed = ((ev["competitions"][0].get("status") or {}).get("type") or {}).get("completed")
-            status = "ok" if completed else nba_availability(athlete, game_day(ev))
+            status = "ok" if completed else nba_availability(athlete, game_day(ev), team)
             if status == "out":
                 continue   # listed Out for this game: leave it off
             tag = f" ({name} questionable)" if status == "questionable" else ""
