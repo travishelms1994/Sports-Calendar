@@ -32,7 +32,7 @@ SKIP_EXHIBITIONS = True
 # Pro teams: every regular-season, play-in and playoff game.
 # (ESPN league path, team id, hours, local TV used when no national channel is listed)
 PRO_TEAMS = {
-    "Rockets": ("basketball/nba", 10, 2.5, "Space City Home Network (local)"),
+    "Rockets": ("basketball/nba", 10, 2.5, "League Pass"),
     "Texans": ("football/nfl", 34, 3.5, ""),
     "Astros": ("baseball/mlb", 18, 3.0, "Space City Home Network (local)"),
 }
@@ -57,6 +57,58 @@ NBA_EARLY_GROUP = [
     18, 20, 2, 8, 5, 14, 28,        # Knicks, 76ers, Celtics, Pistons, Cavaliers, Heat, Raptors
 ]
 NBA_EARLY_GROUP_UNTIL = (12, 25)   # (month, day), last day included
+# Injury rules (regular season only). A game comes off the calendar when, for
+# EITHER team, a Tier 1 star is out, or that team's Tier 2 threshold is met.
+# "Out" = listed Out or Doubtful (Questionable or better counts as playing),
+# re-checked every run, so a game comes back if a player is upgraded.
+# These beat every other NBA rule except: Rockets games and the NBA Cup
+# semifinals and final are always kept. Names are matched to the team's ESPN
+# roster each run; a listed player who isn't on that roster any more doesn't
+# count, and a "check the NBA injury lists" warning goes on the calendar.
+# Tier 1: team id -> stars (any one out takes the game off)
+NBA_TIER1 = {
+    18: ["Jalen Brunson"],                         # Knicks
+    2: ["Jayson Tatum"],                           # Celtics
+    8: ["Cade Cunningham"],                        # Pistons
+    5: ["Donovan Mitchell"],                       # Cavaliers
+    14: ["Giannis Antetokounmpo", "Bam Adebayo"],  # Heat
+    28: ["Kawhi Leonard", "Scottie Barnes"],       # Raptors
+    1: ["Jalen Johnson"],                          # Hawks
+    11: ["Tyrese Haliburton"],                     # Pacers
+    4: ["Caleb Wilson"],                           # Bulls
+    25: ["Shai Gilgeous-Alexander"],               # Thunder
+    24: ["Victor Wembanyama"],                     # Spurs
+    7: ["Nikola Jokic"],                           # Nuggets
+    16: ["Anthony Edwards"],                       # Timberwolves
+    13: ["Luka Doncic"],                           # Lakers
+    9: ["Stephen Curry"],                          # Warriors
+    21: ["Devin Booker"],                          # Suns
+    6: ["Cooper Flagg"],                           # Mavericks
+}
+# Tier 2: team id -> (how many out takes the game off, core players)
+NBA_TIER2 = {
+    18: (2, ["Karl-Anthony Towns", "OG Anunoby", "Mikal Bridges"]),                      # Knicks
+    20: (3, ["Joel Embiid", "LeBron James", "Jaylen Brown", "Tyrese Maxey", "VJ Edgecombe"]),  # 76ers
+    2: (2, ["Paul George", "Derrick White", "Payton Pritchard"]),                        # Celtics
+    8: (2, ["Jalen Duren", "Ausar Thompson"]),                                           # Pistons
+    5: (2, ["James Harden", "Evan Mobley", "Jarrett Allen"]),                            # Cavaliers
+    19: (2, ["Paolo Banchero", "Franz Wagner"]),                                         # Magic
+    11: (2, ["Pascal Siakam", "Ivica Zubac", "Andrew Nembhard"]),                        # Pacers
+    30: (2, ["Kon Knueppel", "Brandon Miller"]),                                         # Hornets
+    27: (2, ["Anthony Davis", "AJ Dybantsa", "Trae Young"]),                             # Wizards
+    25: (2, ["Jalen Williams", "Chet Holmgren"]),                                        # Thunder
+    24: (2, ["De'Aaron Fox", "Dylan Harper", "Stephon Castle"]),                         # Spurs
+    7: (2, ["Jamal Murray", "Aaron Gordon"]),                                            # Nuggets
+    16: (2, ["LaMelo Ball", "Rudy Gobert", "Jaden McDaniels"]),                          # Timberwolves
+    13: (2, ["Austin Reaves", "Walker Kessler"]),                                        # Lakers
+    9: (2, ["Draymond Green", "Jimmy Butler"]),                                          # Warriors
+    26: (2, ["Keyonte George", "Darryn Peterson", "Jaren Jackson Jr.", "Lauri Markkanen"]),  # Jazz
+    12: (2, ["Darius Garland", "Brandon Ingram", "Keaton Wagler"]),                      # Clippers
+    23: (2, ["Domantas Sabonis", "Darius Acuff"]),                                       # Kings
+    22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija"]),             # Trail Blazers
+    6: (2, ["Kyrie Irving", "Daniel Gafford", "PJ Washington", "Dereck Lively II"]),     # Mavericks
+    29: (2, ["Cameron Boozer", "Cedric Coward", "Zach Edey", "Ty Jerome"]),              # Grizzlies
+}
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
 # even if that's next season. Day-To-Day/Questionable gets a "(questionable)" tag.
@@ -81,7 +133,7 @@ NBA_STAR_VISITS = [
 NBA_SEED_TIERS = [((12, 1), 4), ((12, 26), 6)]
 NBA_TOP_SEEDS = max(n for _, n in NBA_SEED_TIERS)
 NBA_CHRISTMAS = True   # every Christmas Day game
-NBA_LOCAL_TV = "Local TV / League Pass"
+NBA_LOCAL_TV = "League Pass"
 # Every game a team plays at this arena: (team id, arena name contains, label for the title)
 NBA_VENUE_GAMES = [
     ("24", "Moody Center", "Austin"),   # Spurs home games in Austin
@@ -745,7 +797,7 @@ def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_l
     addr = venue.get("address") or {}
     where = ", ".join(x for x in (venue.get("fullName"), addr.get("city"), addr.get("state")) if x)
 
-    return Event(
+    event = Event(
         uid=f"espn-{league.replace('/', '-')}-{ev['id']}",
         title=title,
         start=start,
@@ -754,6 +806,10 @@ def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_l
         duration_hours=hours,
         categories=[category] if category else [],
     )
+    # kept for rules that look at who's playing (e.g. NBA injury rules)
+    event.team_ids = [str((c.get("team") or {}).get("id")) for c in comp.get("competitors", [])]
+    event.day = game_day(ev)
+    return event
 
 
 def _note(comp):
@@ -1468,6 +1524,58 @@ def nba_seeded_matchup(ev):
     return f"{name(side['away'])} {sep} {name(side['home'])}"
 
 
+_NBA_ROSTERS = {}
+NBA_INJURY_WARNINGS = []
+
+
+def _player_key(name):
+    """"Nikola Jokić" / "Jaren Jackson Jr." -> "nikola jokic" / "jaren jackson"."""
+    import unicodedata
+    plain = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode().lower()
+    plain = re.sub(r"[^a-z ]", "", plain.replace("-", " "))
+    return re.sub(r" (jr|sr|ii|iii|iv)$", "", re.sub(r"\s+", " ", plain).strip())
+
+
+def nba_listed_ids(team_id, names):
+    """ESPN athlete ids for the listed players who are on this team's roster now.
+    A name that isn't on the roster is skipped and noted for a calendar warning."""
+    if team_id not in _NBA_ROSTERS:
+        roster = fetch_json(f"{ESPN}/basketball/nba/teams/{team_id}/roster").get("athletes", [])
+        _NBA_ROSTERS[team_id] = {_player_key(a.get("fullName", "")): a["id"] for a in roster}
+    ids = []
+    for name in names:
+        found = _NBA_ROSTERS[team_id].get(_player_key(name))
+        if found:
+            ids.append(found)
+        elif (name, team_id) not in NBA_INJURY_WARNINGS:
+            NBA_INJURY_WARNINGS.append((name, team_id))
+    return ids
+
+
+def nba_injury_reason(event):
+    """Why a regular-season game should come off (a listed star out, or a team's
+    Tier 2 threshold met), or None to keep it. Out = Out or Doubtful."""
+    for tid in getattr(event, "team_ids", []):
+        team = int(tid) if tid and tid.isdigit() else None
+        for athlete in nba_listed_ids(team, NBA_TIER1.get(team, [])) if team in NBA_TIER1 else []:
+            if nba_availability(athlete, event.day) == "out":
+                return f"Tier 1: {_athlete_name(team, athlete)} out"
+        if team in NBA_TIER2:
+            need, names = NBA_TIER2[team]
+            out = [a for a in nba_listed_ids(team, names) if nba_availability(a, event.day) == "out"]
+            if len(out) >= need:
+                return f"Tier 2: {', '.join(_athlete_name(team, a) for a in out)} out"
+    return None
+
+
+def _athlete_name(team, athlete):
+    names = NBA_TIER1.get(team, []) + NBA_TIER2.get(team, (0, []))[1]
+    return next((n for n in names if _NBA_ROSTERS[team].get(_player_key(n)) == athlete), athlete)
+
+
+NBA_INJURY_REMOVED = []
+
+
 def nba_regular_season():
     league = "basketball/nba"
     season = nba_season()
@@ -1590,7 +1698,16 @@ def nba_regular_season():
             matchup = espn_matchup_title(ev)
             title = label if _teams_unknown(matchup) else f"{label}: {seeded_matchup(ev)}"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
-    return events
+    # Injury rules beat everything above (the NBA Cup semifinals/final are kept;
+    # Rockets games come from the Rockets rule, which these don't touch).
+    kept = []
+    for e in events:
+        reason = None if "NBA Cup" in e.title else nba_injury_reason(e)
+        if reason:
+            NBA_INJURY_REMOVED.append((e, reason))
+        else:
+            kept.append(e)
+    return kept
 
 
 def nhl_postseason():
@@ -1895,6 +2012,19 @@ def main():
             events.append(e)
             kept += 1
         print(f"{source.__name__:16} {kept:4} events")
+
+    # A listed injury-rule player who's no longer on that team's roster (traded,
+    # waived): flag it on the calendar so the rule gets updated.
+    teams = {t["team"]["id"]: t["team"]["name"] for t in (fetch_json(f"{ESPN}/basketball/nba/teams")
+             .get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", [])} if NBA_INJURY_WARNINGS else {}
+    for name, team in NBA_INJURY_WARNINGS:
+        events.append(Event(uid=f"nba-injury-list-{_player_key(name).replace(' ', '-')}-{team}",
+                            title=f"⚠️ Check NBA injury lists: {name} isn't on the {teams.get(str(team), team)} roster",
+                            start=TODAY, description="He no longer counts for that team's injury rule until the rule is updated.",
+                            categories=["NBA"]))
+        print(f"NBA injury list warning: {name} not on team {team}")
+    for e, reason in NBA_INJURY_REMOVED:
+        print(f"{'NBA injury':16} removed {e.title} ({reason})")
 
     # Hand-entered kickoff times for games ESPN still has as "time TBA".
     for game_id, start, tv, _source in TIME_OVERRIDES:
