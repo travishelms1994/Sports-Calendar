@@ -108,6 +108,11 @@ NBA_TIER2 = {
     22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija"]),             # Trail Blazers
     6: (2, ["Kyrie Irving", "Daniel Gafford", "PJ Washington", "Dereck Lively II"]),     # Mavericks
     29: (2, ["Cameron Boozer", "Cedric Coward", "Zach Edey", "Ty Jerome"]),              # Grizzlies
+    17: (2, ["Michael Porter Jr.", "Julius Randle", "Mikel Brown Jr.", "Egor Demin"]),   # Nets
+    3: (3, ["Zion Williamson", "Trey Murphy III", "Herbert Jones", "Dejounte Murray", "Derik Queen"]),  # Pelicans
+    15: (2, ["Tyler Herro", "Myles Turner", "Brayden Burries"]),                         # Bucks
+    1: (3, ["CJ McCollum", "Kingston Flemings", "Onyeka Okongwu", "Luguentz Dort",
+            "Nickeil Alexander-Walker"]),                                                 # Hawks
 }
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
