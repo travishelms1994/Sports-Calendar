@@ -72,7 +72,7 @@ NBA_TIER1 = {
     8: ["Cade Cunningham"],                        # Pistons
     5: ["Donovan Mitchell"],                       # Cavaliers
     14: ["Giannis Antetokounmpo", "Bam Adebayo"],  # Heat
-    28: ["Kawhi Leonard", "Scottie Barnes"],       # Raptors
+    28: ["Kawhi Leonard"],                         # Raptors
     1: ["Jalen Johnson"],                          # Hawks
     11: ["Tyrese Haliburton"],                     # Pacers
     4: ["Caleb Wilson"],                           # Bulls
@@ -115,6 +115,7 @@ NBA_TIER2 = {
             "Nickeil Alexander-Walker"]),                                                 # Hawks
     4: (2, ["Norman Powell", "Josh Giddey", "Matas Buzelis"]),                           # Bulls
     21: (2, ["Dillon Brooks", "Jalen Green", "Miles Bridges"]),                          # Suns
+    28: (2, ["Scottie Barnes", "RJ Barrett", "Collin Murray-Boyles"]),                   # Raptors
 }
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
@@ -497,6 +498,9 @@ OTHER_BANNERS = [
     ("NFL Draft Round 1", date(2027, 4, 29), None, "National Mall, Washington, D.C."),
     ("NFL Draft Rounds 2-3", date(2027, 4, 30), None, "National Mall, Washington, D.C."),
     ("NFL Draft Rounds 4-7", date(2027, 5, 1), None, "National Mall, Washington, D.C."),
+    # NBA All-Star Game 2027 (NBC, Peacock; start time not announced yet). Verified on
+    # NBA.com key dates and NBC Sports' 2026-27 schedule.
+    ("NBA All-Star Game (time TBA)", date(2027, 2, 21), None, "Mortgage Matchup Center, Phoenix"),
     ("NBA Draft Round 1 (date not yet confirmed)", date(2027, 6, 24), None, ""),
     ("NBA Draft Round 2 (date not yet confirmed)", date(2027, 6, 25), None, ""),
     # March Madness 2027 (men's)
@@ -2001,7 +2005,7 @@ def ufc_title_cards():
 
 def other_banners():
     def category(name):
-        for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("March Madness", "March Madness"),
+        for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("NBA All-Star", "NBA"), ("March Madness", "March Madness"),
                          ("Gold Cup", "USMNT")):
             if key in name:
                 return cat
@@ -2010,7 +2014,8 @@ def other_banners():
     tv = {"NFL": "ESPN · ABC · NFL Network", "NBA": "ABC · ESPN"}
     return [Event(uid=f"banner-{name.split(' (')[0]}-{first.year}".replace(" ", "-"), title=name,
                   start=first, end=last, description=where,
-                  location=tv_label([tv[category(name)]]) if category(name) in tv else "",
+                  location=tv_label(["NBC · Peacock"]) if "All-Star" in name
+                  else tv_label([tv[category(name)]]) if category(name) in tv else "",
                   categories=[category(name)])
             for name, first, last, where in OTHER_BANNERS]
 
