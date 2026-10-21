@@ -50,6 +50,13 @@ NBA_RIVALRIES = [
     (20, 24),   # 76ers - Spurs
     (20, 25),   # 76ers - Thunder
 ]
+# Early-season matchups: every game between any two of these teams, but only
+# through December 25 (after that the top-6 seed rule takes over).
+NBA_EARLY_GROUP = [
+    25, 24, 7, 16, 13,              # Thunder, Spurs, Nuggets, Timberwolves, Lakers
+    18, 20, 2, 8, 5, 14, 28,        # Knicks, 76ers, Celtics, Pistons, Cavaliers, Heat, Raptors
+]
+NBA_EARLY_GROUP_UNTIL = (12, 25)   # (month, day), last day included
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
 # even if that's next season. Day-To-Day/Questionable gets a "(questionable)" tag.
@@ -1468,7 +1475,11 @@ def nba_regular_season():
     seeded_matchup = nba_seeded_matchup
     rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
     venues = {team: (arena, place) for team, arena, place in NBA_VENUE_GAMES}
+    early_group = {str(t) for t in NBA_EARLY_GROUP}
+    early_until = date(season - 1, *NBA_EARLY_GROUP_UNTIL)
     teams = {t for pair in rivalries for t in pair} | set(seeds) | set(venues)
+    if TODAY <= early_until:
+        teams |= early_group
 
     events, seen = [], set()
     for team_id in sorted(teams):
@@ -1479,7 +1490,8 @@ def nba_regular_season():
             top_matchup = all(nba_seed(i, game_day(ev)) for i in ids)
             arena, place = venues.get(team_id, (None, ""))
             at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
-            if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup or at_venue):
+            early = set(ids) <= early_group and len(set(ids)) == 2 and game_day(ev) <= early_until
+            if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup or at_venue or early):
                 continue
             seen.add(ev["id"])
             title = nba_seeded_matchup(ev)
