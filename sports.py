@@ -47,6 +47,8 @@ NBA_RIVALRIES = [
     (18, 20),   # Knicks - 76ers
     (2, 18),    # Celtics - Knicks
     (13, 2),    # Lakers - Celtics
+    (20, 24),   # 76ers - Spurs
+    (20, 25),   # 76ers - Thunder
 ]
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
@@ -65,17 +67,20 @@ NBA_RETURN_GAMES = [
 NBA_STAR_VISITS = [
     (3945274, "Luka", 13, 6, "Luka in Dallas"),   # Lakers @ Mavericks while Luka is a Laker
 ]
-# and from January 1 on, every game between two teams that are currently
-# top-6 seeds in their conference (re-checked every run as standings change).
-NBA_TOP_SEEDS = 6
-NBA_TOP_SEEDS_FROM = (1, 1)   # (month, day)
+# and every game between two teams that are currently top seeds in their
+# conference (re-checked every run as standings change): top-4 vs top-4 from
+# December 1, widening to top-6 vs top-6 from December 26.
+# ((month, day) the tier starts, top N seeds)
+NBA_SEED_TIERS = [((12, 1), 4), ((12, 26), 6)]
+NBA_TOP_SEEDS = max(n for _, n in NBA_SEED_TIERS)
+NBA_CHRISTMAS = True   # every Christmas Day game
 NBA_LOCAL_TV = "Local TV / League Pass"
 # Every game a team plays at this arena: (team id, arena name contains, label for the title)
 NBA_VENUE_GAMES = [
     ("24", "Moody Center", "Austin"),   # Spurs home games in Austin
 ]
-# NBA Cup knockout rounds to include (ESPN labels).
 NBA_OPENING_NIGHT = True   # every game on the first day of the regular season
+# NBA Cup knockout rounds to include (ESPN labels).
 NBA_CUP_ROUNDS = {"NBA Cup - Semifinals": "NBA Cup Semifinal", "NBA Cup Championship": "NBA Cup Final"}
 
 # TV shown in place of the location. Out-of-market services are left out.
@@ -1353,7 +1358,8 @@ _NBA_INJURIES = None
 def nba_availability(athlete, day):
     """'out', 'questionable' or 'ok' for a player in a game on `day`, from ESPN's
     injury report. Out counts if his expected return is after the game (or, with no
-    return date, the game is within two weeks). Questionable only for games within 3 days."""
+    return date, the game is within two weeks); Doubtful counts as Out for games
+    within 3 days. Questionable/Day-To-Day only for games within 3 days."""
     global _NBA_INJURIES
     if _NBA_INJURIES is None:
         _NBA_INJURIES = {}
@@ -1371,7 +1377,9 @@ def nba_availability(athlete, day):
     days_away = (day - TODAY).days
     if status == "out" and ((back and back > str(day)) or (not back and days_away <= 14)):
         return "out"
-    if status in ("day-to-day", "questionable", "doubtful") and days_away <= 3:
+    if status == "doubtful" and days_away <= 3:
+        return "out"   # doubtful: assume he sits
+    if status in ("day-to-day", "questionable") and days_away <= 3:
         return "questionable"
     return "ok"
 
@@ -1407,8 +1415,28 @@ def nba_seeds(season):
 def nba_regular_season():
     league = "basketball/nba"
     season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year   # 2026-27 season = 2027
-    seeds_from = date(season, *NBA_TOP_SEEDS_FROM)
+    tiers = [(date(season - 1 if m >= 7 else season, m, d), n) for (m, d), n in NBA_SEED_TIERS]
+    seeds_from = min(start for start, _ in tiers)
     seeds = nba_seeds(season) if TODAY >= seeds_from else {}
+
+    def seed_limit(day):
+        """How many top seeds count for a matchup on `day` (0 before the first tier)."""
+        return max((n for start, n in tiers if day >= start), default=0)
+
+    def seeded_matchup(ev):
+        """"#3E Knicks @ #1W Thunder": the matchup with current seeds (once seeds count)."""
+        comp = ev["competitions"][0]
+        side = {c.get("homeAway"): c for c in comp["competitors"]}
+        if len(side) < 2:
+            return espn_matchup_title(ev)
+        def name(c):
+            tid = (c.get("team") or {}).get("id")
+            return f"{seeds[tid]} {_team_name(c)}" if tid in seeds else _team_name(c)
+        sep = "vs" if comp.get("neutralSite") else "@"
+        return f"{name(side['away'])} {sep} {name(side['home'])}"
+
+    def seed_number(tid):
+        return int(re.match(r"#(\d+)", seeds[tid]).group(1))
     rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
     venues = {team: (arena, place) for team, arena, place in NBA_VENUE_GAMES}
     teams = {t for pair in rivalries for t in pair} | set(seeds) | set(venues)
@@ -1419,7 +1447,8 @@ def nba_regular_season():
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            top_matchup = all(i in seeds for i in ids) and game_day(ev) >= seeds_from
+            limit = seed_limit(game_day(ev))
+            top_matchup = bool(limit) and all(i in seeds and seed_number(i) <= limit for i in ids)
             arena, place = venues.get(team_id, (None, ""))
             at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
             if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup or at_venue):
@@ -1461,14 +1490,14 @@ def nba_regular_season():
             completed = ((ev["competitions"][0].get("status") or {}).get("type") or {}).get("completed")
             if completed:
                 if nba_played(ev["id"], athlete):
-                    add_visit(ev, f"{espn_matchup_title(ev)} ({label})")
+                    add_visit(ev, f"{seeded_matchup(ev)} ({label})")
                     break
                 continue   # he didn't play: the return is still to come
             status = nba_availability(athlete, game_day(ev))
             if status == "out":
                 continue   # listed Out for this one: the next visit is the return
             tag = f" ({name} questionable)" if status == "questionable" else ""
-            add_visit(ev, f"{espn_matchup_title(ev)} ({label}){tag}")
+            add_visit(ev, f"{seeded_matchup(ev)} ({label}){tag}")
             break
 
     # Star visits: every game at the former team's arena while the player is still there.
@@ -1486,7 +1515,7 @@ def nba_regular_season():
             if status == "out":
                 continue   # listed Out for this game: leave it off
             tag = f" ({name} questionable)" if status == "questionable" else ""
-            add_visit(ev, f"{espn_matchup_title(ev)} ({label}){tag}")
+            add_visit(ev, f"{seeded_matchup(ev)} ({label}){tag}")
 
     # Opening night: every game on the first day of the regular season (late
     # October). These replace a rivalry version of the same game so the title
@@ -1504,6 +1533,21 @@ def nba_regular_season():
                 break
             day += timedelta(days=1)
 
+    # Christmas Day: every game, tagged "(Christmas)" (on top of any return-game label).
+    if NBA_CHRISTMAS:
+        christmas = date(season - 1, 12, 25)
+        if TODAY <= christmas + timedelta(days=2):
+            board = fetch_json(f"{ESPN}/{league}/scoreboard?dates={christmas:%Y%m%d}")
+            for ev in board.get("events", []):
+                if (ev.get("season") or {}).get("type") != 2:
+                    continue
+                # keep a return-game / star-visit label if this game already has one
+                old = next((e for e in events if e.uid.endswith(f"-{ev['id']}")), None)
+                label = old.title if old and "(" in old.title else seeded_matchup(ev)
+                events = [e for e in events if e is not old]
+                events.append(espn_event(ev, league, f"{label} (Christmas)", 2.5,
+                                         "NBA", local_tv=NBA_LOCAL_TV))
+
     # NBA Cup semifinals and final (December). These replace a rivalry/top-seed
     # version of the same game so the title says it's the Cup.
     for ev in _scoreboard_days(league, date(TODAY.year, 12, 1), date(TODAY.year, 12, 22)):
@@ -1511,7 +1555,7 @@ def nba_regular_season():
         if label:
             events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
             matchup = espn_matchup_title(ev)
-            title = label if _teams_unknown(matchup) else f"{label}: {matchup}"
+            title = label if _teams_unknown(matchup) else f"{label}: {seeded_matchup(ev)}"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
     return events
 
