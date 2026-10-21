@@ -771,7 +771,10 @@ def pro_team_games():
                     note = _note(ev["competitions"][0])
                     title = None
                     if note and (season_type in (3, 5) or "Cup" in note):
-                        title = f"{espn_matchup_title(ev)} ({note})"
+                        matchup = nba_seeded_matchup(ev) if league.endswith("nba") and season_type == 2 else espn_matchup_title(ev)
+                        title = f"{matchup} ({note})"
+                    elif league.endswith("nba") and season_type == 2:
+                        title = nba_seeded_matchup(ev)   # with seeds from Dec 1
                     elif league == "football/nfl" and season_type == 2:
                         title = nfl_title(ev)   # with playoff seeds
                     # Games at a special arena (e.g. Spurs in Austin) get the city tag here too
@@ -1412,31 +1415,57 @@ def nba_seeds(season):
     return seeds
 
 
+_NBA_SEEDS = None
+
+
+def nba_season():
+    return TODAY.year + 1 if TODAY.month >= 7 else TODAY.year   # 2026-27 season = 2027
+
+
+def nba_seed_limit(day):
+    """How many top seeds count on `day`: 0 before Dec 1, 4 through Dec 25, 6 from Dec 26."""
+    season = nba_season()
+    tiers = [(date(season - 1 if m >= 7 else season, m, d), n) for (m, d), n in NBA_SEED_TIERS]
+    return max((n for start, n in tiers if day >= start), default=0)
+
+
+def nba_current_seeds():
+    """{team id: "#1W"} for the current top seeds, once the first seed tier has started."""
+    global _NBA_SEEDS
+    if _NBA_SEEDS is None:
+        _NBA_SEEDS = nba_seeds(nba_season()) if nba_seed_limit(TODAY) else {}
+    return _NBA_SEEDS
+
+
+def nba_seed(team_id, day):
+    """A team's seed number if it counts for a game on `day` (top 4 / top 6), else None."""
+    label = nba_current_seeds().get(team_id)
+    number = int(re.match(r"#(\d+)", label).group(1)) if label else None
+    return number if number and number <= nba_seed_limit(day) else None
+
+
+def nba_seeded_matchup(ev):
+    """"#3E Knicks @ #1W Thunder": seeds shown only within that game date's tier."""
+    comp = ev["competitions"][0]
+    side = {c.get("homeAway"): c for c in comp["competitors"]}
+    if len(side) < 2:
+        return espn_matchup_title(ev)
+    day = game_day(ev)
+    seeds = nba_current_seeds()
+
+    def name(c):
+        tid = (c.get("team") or {}).get("id")
+        return f"{seeds[tid]} {_team_name(c)}" if nba_seed(tid, day) else _team_name(c)
+
+    sep = "vs" if comp.get("neutralSite") else "@"
+    return f"{name(side['away'])} {sep} {name(side['home'])}"
+
+
 def nba_regular_season():
     league = "basketball/nba"
-    season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year   # 2026-27 season = 2027
-    tiers = [(date(season - 1 if m >= 7 else season, m, d), n) for (m, d), n in NBA_SEED_TIERS]
-    seeds_from = min(start for start, _ in tiers)
-    seeds = nba_seeds(season) if TODAY >= seeds_from else {}
-
-    def seed_limit(day):
-        """How many top seeds count for a matchup on `day` (0 before the first tier)."""
-        return max((n for start, n in tiers if day >= start), default=0)
-
-    def seeded_matchup(ev):
-        """"#3E Knicks @ #1W Thunder": the matchup with current seeds (once seeds count)."""
-        comp = ev["competitions"][0]
-        side = {c.get("homeAway"): c for c in comp["competitors"]}
-        if len(side) < 2:
-            return espn_matchup_title(ev)
-        def name(c):
-            tid = (c.get("team") or {}).get("id")
-            return f"{seeds[tid]} {_team_name(c)}" if tid in seeds else _team_name(c)
-        sep = "vs" if comp.get("neutralSite") else "@"
-        return f"{name(side['away'])} {sep} {name(side['home'])}"
-
-    def seed_number(tid):
-        return int(re.match(r"#(\d+)", seeds[tid]).group(1))
+    season = nba_season()
+    seeds = nba_current_seeds()
+    seeded_matchup = nba_seeded_matchup
     rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
     venues = {team: (arena, place) for team, arena, place in NBA_VENUE_GAMES}
     teams = {t for pair in rivalries for t in pair} | set(seeds) | set(venues)
@@ -1447,21 +1476,13 @@ def nba_regular_season():
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            limit = seed_limit(game_day(ev))
-            top_matchup = bool(limit) and all(i in seeds and seed_number(i) <= limit for i in ids)
+            top_matchup = all(nba_seed(i, game_day(ev)) for i in ids)
             arena, place = venues.get(team_id, (None, ""))
             at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
             if ev["id"] in seen or not (frozenset(ids) in rivalries or top_matchup or at_venue):
                 continue
             seen.add(ev["id"])
-            teams_by_side = {c.get("homeAway"): c for c in comp["competitors"]}
-
-            def name(c):
-                tid = (c.get("team") or {}).get("id")
-                return f"{seeds[tid]} {_team_name(c)}" if tid in seeds else _team_name(c)
-
-            sep = "vs" if comp.get("neutralSite") else "@"
-            title = f"{name(teams_by_side['away'])} {sep} {name(teams_by_side['home'])}"
+            title = nba_seeded_matchup(ev)
             if at_venue:
                 title += f" ({place})"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
@@ -1528,7 +1549,7 @@ def nba_regular_season():
             if opening:
                 for ev in opening:
                     events = [e for e in events if not e.uid.endswith(f"-{ev['id']}")]
-                    events.append(espn_event(ev, league, f"{espn_matchup_title(ev)} (Opening Night)", 2.5,
+                    events.append(espn_event(ev, league, f"{nba_seeded_matchup(ev)} (Opening Night)", 2.5,
                                              "NBA", local_tv=NBA_LOCAL_TV))
                 break
             day += timedelta(days=1)
