@@ -91,10 +91,10 @@ NBA_TIER2 = {
     20: (3, ["Joel Embiid", "LeBron James", "Jaylen Brown", "Tyrese Maxey", "VJ Edgecombe"]),  # 76ers
     2: (2, ["Paul George", "Derrick White", "Payton Pritchard"]),                        # Celtics
     8: (2, ["Jalen Duren", "Ausar Thompson"]),                                           # Pistons
-    5: (2, ["James Harden", "Evan Mobley", "Jarrett Allen"]),                            # Cavaliers
+    5: (2, ["James Harden", "Evan Mobley", "Jarrett Allen", "Peyton Watson"]),           # Cavaliers
     19: (2, ["Paolo Banchero", "Franz Wagner", "Desmond Bane"]),                         # Magic
     11: (2, ["Pascal Siakam", "Ivica Zubac", "Andrew Nembhard"]),                        # Pacers
-    30: (2, ["Kon Knueppel", "Brandon Miller"]),                                         # Hornets
+    30: (2, ["Kon Knueppel", "Brandon Miller", "Naz Reid"]),                             # Hornets
     27: (2, ["Anthony Davis", "AJ Dybantsa", "Trae Young"]),                             # Wizards
     25: (2, ["Jalen Williams", "Chet Holmgren"]),                                        # Thunder
     24: (2, ["De'Aaron Fox", "Dylan Harper", "Stephon Castle"]),                         # Spurs
@@ -105,7 +105,8 @@ NBA_TIER2 = {
     26: (2, ["Keyonte George", "Darryn Peterson", "Jaren Jackson Jr.", "Lauri Markkanen"]),  # Jazz
     12: (2, ["Darius Garland", "Brandon Ingram", "Keaton Wagler"]),                      # Clippers
     23: (2, ["Domantas Sabonis", "Darius Acuff"]),                                       # Kings
-    22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija"]),             # Trail Blazers
+    22: (3, ["Ja Morant", "Jrue Holiday", "Damian Lillard", "Deni Avdija", "Donovan Clingan",
+             "Toumani Camara"]),                                                          # Trail Blazers
     6: (2, ["Kyrie Irving", "Daniel Gafford", "PJ Washington", "Dereck Lively II"]),     # Mavericks
     29: (2, ["Cameron Boozer", "Cedric Coward", "Zach Edey", "Ty Jerome"]),              # Grizzlies
     17: (2, ["Michael Porter Jr.", "Julius Randle", "Mikel Brown Jr.", "Egor Demin"]),   # Nets
