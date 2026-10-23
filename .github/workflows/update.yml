@@ -1,13 +1,12 @@
 name: Update calendars
 
 on:
-  # Every 4 hours at 1:30, 5:30 and 9:30 (AM and PM) Central time, all year.
-  # GitHub schedules run on UTC, so both the daylight-time (CDT) and
-  # standard-time (CST) versions are listed; the "when" job below lets only
-  # the one that matches the current Central offset go ahead.
+  # Central time: 1:30, 5:30 and 9:30 AM, then every hour 12:30 PM - 11:30 PM.
+  # GitHub schedules run on UTC, so this fires every hour at :30 and the
+  # "when" job below lets through only the Central-time hours wanted
+  # (which also keeps it right across daylight-time changes).
   schedule:
-    - cron: "30 2,6,10,14,18,22 * * *"   # = 1:30/5:30/9:30 CDT
-    - cron: "30 3,7,11,15,19,23 * * *"   # = 1:30/5:30/9:30 CST
+    - cron: "30 * * * *"
   push:
     branches: [main]
   workflow_dispatch:        # "Run workflow" button on the Actions tab
@@ -31,15 +30,17 @@ jobs:
       - id: check
         env:
           EVENT: ${{ github.event_name }}
-          CRON: ${{ github.event.schedule }}
         run: |
           go=true
           if [ "$EVENT" = "schedule" ]; then
-            offset=$(TZ=America/Chicago date +%z)   # -0500 in daylight time, -0600 in standard
-            if [ "$offset" = "-0500" ] && [ "$CRON" != "30 2,6,10,14,18,22 * * *" ]; then go=false; fi
-            if [ "$offset" = "-0600" ] && [ "$CRON" != "30 3,7,11,15,19,23 * * *" ]; then go=false; fi
+            # The Central hour this run was scheduled for (runs start up to ~an hour late)
+            hour=$(TZ=America/Chicago date -d "-30 min" +%H)
+            case "$hour" in
+              01|05|09|12|13|14|15|16|17|18|19|20|21|22|23) go=true ;;
+              *) go=false ;;
+            esac
+            echo "Scheduled for Central hour $hour"
           fi
-          echo "Central offset $(TZ=America/Chicago date +%z), schedule '$CRON', go=$go"
           echo "go=$go" >> "$GITHUB_OUTPUT"
 
   build:
