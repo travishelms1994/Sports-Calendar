@@ -1,8 +1,13 @@
 name: Update calendars
 
 on:
+  # Every 4 hours at 1:30, 5:30 and 9:30 (AM and PM) Central time, all year.
+  # GitHub schedules run on UTC, so both the daylight-time (CDT) and
+  # standard-time (CST) versions are listed; the "when" job below lets only
+  # the one that matches the current Central offset go ahead.
   schedule:
-    - cron: "17 */4 * * *"  # every 4 hours
+    - cron: "30 2,6,10,14,18,22 * * *"   # = 1:30/5:30/9:30 CDT
+    - cron: "30 3,7,11,15,19,23 * * *"   # = 1:30/5:30/9:30 CST
   push:
     branches: [main]
   workflow_dispatch:        # "Run workflow" button on the Actions tab
@@ -18,7 +23,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  when:
+    runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.check.outputs.go }}
+    steps:
+      - id: check
+        env:
+          EVENT: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
+        run: |
+          go=true
+          if [ "$EVENT" = "schedule" ]; then
+            offset=$(TZ=America/Chicago date +%z)   # -0500 in daylight time, -0600 in standard
+            if [ "$offset" = "-0500" ] && [ "$CRON" != "30 2,6,10,14,18,22 * * *" ]; then go=false; fi
+            if [ "$offset" = "-0600" ] && [ "$CRON" != "30 3,7,11,15,19,23 * * *" ]; then go=false; fi
+          fi
+          echo "Central offset $(TZ=America/Chicago date +%z), schedule '$CRON', go=$go"
+          echo "go=$go" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: when
+    if: needs.when.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
