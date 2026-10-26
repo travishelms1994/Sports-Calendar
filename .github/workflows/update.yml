@@ -53,7 +53,14 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python sports.py site
+      # On failure, the last lines of the error become a public annotation on the
+      # run (logs need a sign-in to read; annotations don't).
+      - run: |
+          set -o pipefail
+          if ! python sports.py site 2>&1 | tee build.log; then
+            echo "::error title=Calendar build failed::$(tail -n 6 build.log | tr '\n' ' ' | cut -c1-900)"
+            exit 1
+          fi
       - run: cp index.html site/
       - uses: actions/upload-pages-artifact@v3
         with:

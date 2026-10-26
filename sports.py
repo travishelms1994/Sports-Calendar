@@ -552,6 +552,15 @@ OTHER_BANNERS = [
 TIME_OVERRIDES = [
     ("401858505", datetime(2026, 10, 31, 12, 30, tzinfo=ZoneInfo("America/Los_Angeles")), "Peacock",
      "Northwestern @ Oregon, verified on FBSchedules Oct 31 TV selections (3:30 ET) and OregonLive/SI, 10/19"),
+    # Nov 7, verified on FBSchedules Nov 7 TV selections (times there are Eastern), 10/26
+    ("401856740", datetime(2026, 11, 7, 15, 30, tzinfo=ZoneInfo("America/New_York")), "ABC", "Alabama @ LSU, FBSchedules 10/26"),
+    ("401856743", datetime(2026, 11, 7, 12, 0, tzinfo=ZoneInfo("America/New_York")), "ABC or ESPN", "Texas @ Missouri, FBSchedules 10/26"),
+    ("401856741", datetime(2026, 11, 7, 19, 30, tzinfo=ZoneInfo("America/New_York")), "ABC", "Georgia @ Ole Miss, FBSchedules 10/26"),
+    ("401856849", datetime(2026, 11, 7, 12, 0, tzinfo=ZoneInfo("America/New_York")), "ABC or ESPN", "BYU @ Utah, FBSchedules 10/26"),
+    ("401856745", datetime(2026, 11, 7, 18, 15, tzinfo=ZoneInfo("America/New_York")), "ESPN", "Kentucky @ Tennessee, FBSchedules 10/26"),
+    ("401856739", datetime(2026, 11, 7, 19, 45, tzinfo=ZoneInfo("America/New_York")), "SEC Network", "Oklahoma @ Florida, FBSchedules 10/26"),
+    ("401858514", datetime(2026, 11, 7, 15, 30, tzinfo=ZoneInfo("America/New_York")), "CBS · Paramount+", "Oregon @ Ohio State, FBSchedules 10/26"),
+    ("401862821", datetime(2026, 11, 7, 16, 0, tzinfo=ZoneInfo("America/New_York")), "ESPNU", "Rice @ North Texas, FBSchedules 10/26"),
 ]
 
 # Emoji at the front of each event title, by category.
