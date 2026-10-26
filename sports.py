@@ -798,11 +798,22 @@ def _teams_unknown(matchup):
     return matchup in ("TBD @ TBD", "TBD vs TBD")
 
 
+def time_unset(ev):
+    """Whether an ESPN game has no real start time yet. ESPN sometimes marks a
+    college football game's midnight-Eastern placeholder as a real time while it's
+    mid-update, so that counts as unset too."""
+    if ev["competitions"][0].get("timeValid", True) is False:
+        return True
+    if any("college-football" in (link.get("href") or "") for link in ev.get("links") or []):
+        return parse_espn_date(ev["date"]).astimezone(ZoneInfo("America/New_York")).strftime("%H:%M") == "00:00"
+    return False
+
+
 def game_day(ev):
     """The Central-time day of an ESPN game. Games without a set time are stored
     at midnight Eastern / 11 PM Central the night before, so shift those forward."""
     start = parse_espn_date(ev["date"])
-    if ev["competitions"][0].get("timeValid", True) is False:
+    if time_unset(ev):
         start += timedelta(hours=6)
     return central_date(start)
 
@@ -820,7 +831,7 @@ def espn_event(ev, league, title=None, hours=3.0, category="", rank=False, use_l
         title += " (Postponed)" if state == "STATUS_POSTPONED" else " (Canceled)"
 
     start = parse_espn_date(ev["date"])
-    if comp.get("timeValid", True) is False:
+    if time_unset(ev):
         start = game_day(ev)
         title += " (time TBA)"
 
