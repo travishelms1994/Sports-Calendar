@@ -549,18 +549,15 @@ OTHER_BANNERS = [
 # Only add a time after checking it independently (FBSchedules TV selections, or the
 # school/conference announcement); never on word of mouth alone.
 # (ESPN game id, local start, TV or "" to leave TV as is, where it was announced)
+# College football games ESPN still has as "time TBA" get their kickoff time and TV
+# from FBSchedules' weekly "TV selections" page when it already lists them
+# (FBSchedules usually posts times before ESPN does). ESPN's time wins once posted.
+FBSCHEDULES_TIMES = True
+FBSCHEDULES_DAYS_AHEAD = 14
+
 TIME_OVERRIDES = [
     ("401858505", datetime(2026, 10, 31, 12, 30, tzinfo=ZoneInfo("America/Los_Angeles")), "Peacock",
      "Northwestern @ Oregon, verified on FBSchedules Oct 31 TV selections (3:30 ET) and OregonLive/SI, 10/19"),
-    # Nov 7, verified on FBSchedules Nov 7 TV selections (times there are Eastern), 10/26
-    ("401856740", datetime(2026, 11, 7, 15, 30, tzinfo=ZoneInfo("America/New_York")), "ABC", "Alabama @ LSU, FBSchedules 10/26"),
-    ("401856743", datetime(2026, 11, 7, 12, 0, tzinfo=ZoneInfo("America/New_York")), "ABC or ESPN", "Texas @ Missouri, FBSchedules 10/26"),
-    ("401856741", datetime(2026, 11, 7, 19, 30, tzinfo=ZoneInfo("America/New_York")), "ABC", "Georgia @ Ole Miss, FBSchedules 10/26"),
-    ("401856849", datetime(2026, 11, 7, 12, 0, tzinfo=ZoneInfo("America/New_York")), "ABC or ESPN", "BYU @ Utah, FBSchedules 10/26"),
-    ("401856745", datetime(2026, 11, 7, 18, 15, tzinfo=ZoneInfo("America/New_York")), "ESPN", "Kentucky @ Tennessee, FBSchedules 10/26"),
-    ("401856739", datetime(2026, 11, 7, 19, 45, tzinfo=ZoneInfo("America/New_York")), "SEC Network", "Oklahoma @ Florida, FBSchedules 10/26"),
-    ("401858514", datetime(2026, 11, 7, 15, 30, tzinfo=ZoneInfo("America/New_York")), "CBS · Paramount+", "Oregon @ Ohio State, FBSchedules 10/26"),
-    ("401862821", datetime(2026, 11, 7, 16, 0, tzinfo=ZoneInfo("America/New_York")), "ESPNU", "Rice @ North Texas, FBSchedules 10/26"),
 ]
 
 # Emoji at the front of each event title, by category.
@@ -2064,6 +2061,103 @@ def other_banners():
 
 # =============================================================== build
 
+# ---------------------------------------------------------------- FBSchedules times
+
+FBS_TV = {"SECN": "SEC Network", "FOX": "Fox", "FOX network": "Fox", "CBSSN": "CBS Sports Network",
+          "ACCN": "ACC Network", "ESPN+": "ESPN+", "TV TBA": "", "TV": "", "TBA": ""}
+_CFB_TEAMS = None
+
+
+def _fbs_norm(name):
+    """FBSchedules and ESPN spell schools differently ("Penn St.", "MS State",
+    "S. Carolina"); bring both to one form."""
+    n = name.lower().replace("&amp;", "&").replace("’", "'").strip()
+    n = re.sub(r"^ms\b", "mississippi", n)
+    n = re.sub(r"^s\. ", "south ", n)
+    n = re.sub(r"^n\. ", "north ", n)
+    n = re.sub(r"\bst\.?$", "state", n)
+    return re.sub(r"[^a-z0-9&() ]", "", n).strip()
+
+
+def _cfb_team_names(team_id):
+    """Every way to write a college football team's name, normalized."""
+    global _CFB_TEAMS
+    if _CFB_TEAMS is None:
+        _CFB_TEAMS = {}
+        data = fetch_json(f"{ESPN}/football/college-football/teams?limit=1000&groups=80")
+        for item in (data.get("sports") or [{}])[0].get("leagues", [{}])[0].get("teams", []):
+            t = item["team"]
+            _CFB_TEAMS[t["id"]] = {_fbs_norm(x) for x in (t.get("location"), t.get("shortDisplayName"),
+                                   t.get("abbreviation"), t.get("nickname")) if x}
+    return _CFB_TEAMS.get(str(team_id), set())
+
+
+def fbschedules_week(saturday):
+    """[(day, away, home, start or None, tv)] from FBSchedules' TV selections page
+    for the week ending `saturday`. Empty if the page isn't there or can't be read."""
+    url = (f"https://fbschedules.com/college-football-schedule-tv-selections-for-"
+           f"{saturday:%B}-{saturday.day}-{saturday.year}/").lower()
+    try:
+        page = fetch_text(url, retries=2, browser=True)
+    except RuntimeError:
+        return []
+    import html as _html
+    games, day = [], None
+    eastern = ZoneInfo("America/New_York")
+    for line in re.split(r"<br\s*/?>|</p>|</h3>|<p>", page):
+        text = _html.unescape(re.sub(r"<[^>]+>", "", line)).strip()
+        header = re.match(r"(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday), (\w+)\.? (\d+)$", text)
+        if header:
+            month = datetime.strptime(header.group(2)[:3], "%b").month
+            day = date(saturday.year if month >= saturday.month - 1 else saturday.year + 1, month, int(header.group(3)))
+            continue
+        game = re.match(r"(.+?) (?:at|vs\.?) (.+?) – (.+)$", text)
+        if not (game and day):
+            continue
+        away, home, rest = game.groups()
+        when, _, tv = rest.partition(",")
+        clock = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\w*", when.strip())
+        start = None
+        if clock:   # "3:30pm"; "TBA", "TBA 11/1" and "3:30 or 4:15pm" stay unset
+            hour = int(clock.group(1)) % 12 + (12 if clock.group(3) == "p" else 0)
+            start = datetime(day.year, day.month, day.day, hour, int(clock.group(2) or 0), tzinfo=eastern)
+        tv = tv.strip()
+        tv = FBS_TV.get(tv, tv.replace("/", " · "))
+        games.append((day, _fbs_norm(away), _fbs_norm(home), start, tv))
+    return games
+
+
+def fill_times_from_fbschedules(events):
+    """Kickoff times (and TV, if ESPN has none) for college football games ESPN
+    still has as "time TBA", when FBSchedules already lists them."""
+    if not FBSCHEDULES_TIMES:
+        return 0
+    tba = [e for e in events if "(time TBA)" in e.title and "college-football" in e.uid
+           and getattr(e, "day", None) and TODAY <= e.day <= TODAY + timedelta(days=FBSCHEDULES_DAYS_AHEAD)]
+    weeks = {}
+    for e in tba:
+        offset = (5 - e.day.weekday()) % 7 if e.day.weekday() != 6 else -1   # that week's Saturday
+        weeks.setdefault(e.day + timedelta(days=offset), []).append(e)
+    filled = 0
+    for saturday, todo in weeks.items():
+        listed = fbschedules_week(saturday)
+        for e in todo:
+            names = [_cfb_team_names(t) for t in e.team_ids]
+            for day, away, home, start, tv in listed:
+                if day != e.day or not start or len(names) != 2:
+                    continue
+                if (away in names[0] and home in names[1]) or (away in names[1] and home in names[0]):
+                    e.start, e.end = start, None
+                    e.title = e.title.replace(" (time TBA)", "")
+                    if tv and e.location.endswith("TV TBA"):
+                        e.location = tv_label([tv])
+                    note = "Kickoff time from FBSchedules (ESPN still lists it as TBA)."
+                    e.description = f"{e.description}\n{note}" if e.description else note
+                    filled += 1
+                    break
+    return filled
+
+
 def main():
     out_dir = sys.argv[1] if len(sys.argv) > 1 else "site"
     os.makedirs(out_dir, exist_ok=True)
@@ -2110,6 +2204,10 @@ def main():
                 e.title = e.title.replace(" (time TBA)", "")
                 if tv and e.location.endswith("TV TBA"):
                     e.location = tv_label([tv])
+
+    filled = fill_times_from_fbschedules(events)
+    if filled:
+        print(f"{'FBSchedules':16} {filled:4} kickoff times ESPN doesn't have yet")
 
     # On College Football Week Saturdays, "time TBA" games go at 11:58-11:59 PM
     # instead of all-day, so the week banner is the only all-day item (on top) and
