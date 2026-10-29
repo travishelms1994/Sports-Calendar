@@ -141,6 +141,8 @@ NBA_RETURN_GAMES = [
     (6450, "Kawhi", 28, 12, "Kawhi's return to L.A."),             # Raptors @ Clippers
     (3032977, "Giannis", 14, 15, "Giannis's return to Milwaukee"), # Heat @ Bucks
     (4279888, "Ja", 22, 29, "Ja's return to Memphis"),             # Trail Blazers @ Grizzlies
+    (4277905, "Trae", 27, 1, "Trae's return to Atlanta"),          # Wizards @ Hawks
+    (4432816, "LaMelo", 16, 30, "LaMelo's return to Charlotte"),   # Timberwolves @ Hornets
 ]
 # Every game a player's team plays at a former team's arena, as long as the player is
 # still on that team (checked every run) and isn't listed Out for that game.
@@ -162,7 +164,8 @@ NBA_VENUE_GAMES = [
 ]
 NBA_OPENING_NIGHT = True   # every game on the first day of the regular season
 # NBA Cup knockout rounds to include (ESPN labels).
-NBA_CUP_ROUNDS = {"NBA Cup - Semifinals": "NBA Cup Semifinal", "NBA Cup Championship": "NBA Cup Final"}
+NBA_CUP_ROUNDS = {"NBA Cup - Quarterfinals": "NBA Cup Quarterfinal", "NBA Cup - Semifinals": "NBA Cup Semifinal",
+                  "NBA Cup Championship": "NBA Cup Final"}
 
 # TV shown in place of the location. Out-of-market services are left out.
 SKIP_TV = ("MLB.TV", "NBA League Pass", "NHL.TV", "NFL+", "Fandango",
@@ -1781,11 +1784,12 @@ def nba_regular_season():
             matchup = espn_matchup_title(ev)
             title = label if _teams_unknown(matchup) else f"{label}: {seeded_matchup(ev)}"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
-    # Injury rules beat everything above (the NBA Cup semifinals/final are kept;
+    # Injury rules beat everything above, quarterfinals included (the NBA Cup semifinals/final are kept;
     # Rockets games come from the Rockets rule, which these don't touch).
     kept = []
     for e in events:
-        reason = None if "NBA Cup" in e.title else nba_injury_reason(e)
+        cup_final_four = "NBA Cup Semifinal" in e.title or "NBA Cup Final" in e.title
+        reason = None if cup_final_four else nba_injury_reason(e)
         if reason:
             NBA_INJURY_REMOVED.append((e, reason))
         else:
