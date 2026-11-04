@@ -285,9 +285,8 @@ CFB_RIVALRIES = [
 # Texas Power Four vs Power Four schools in bordering states, ranked or not.
 BORDER_P4 = [201, 197, 8, 99]   # Oklahoma, Oklahoma State, Arkansas, LSU
 CFB_RIVALRIES += [(a, b) for a in TEXAS_P4 for b in BORDER_P4]
-# Texas Group of Five schools vs each other, any day.
+# Texas Group of Five schools (used by the bowl and ranked-Texas-vs-Power-Four rules).
 TEXAS_G6 = [249, 242, 2534, 326, 2638, 2636]   # North Texas, Rice, Sam Houston, Texas State, UTEP, UTSA
-CFB_RIVALRIES += [(a, b) for i, a in enumerate(TEXAS_G6) for b in TEXAS_G6[i + 1:]]
 
 # Big program matchups: every regular-season game between any two of these schools.
 CFB_BIG_PROGRAMS = [
