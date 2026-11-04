@@ -101,7 +101,7 @@ NBA_TIER2 = {
     7: (2, ["Jamal Murray", "Aaron Gordon"]),                                            # Nuggets
     16: (2, ["LaMelo Ball", "Rudy Gobert", "Jaden McDaniels"]),                          # Timberwolves
     13: (2, ["Austin Reaves", "Walker Kessler"]),                                        # Lakers
-    9: (2, ["Draymond Green", "Jimmy Butler"]),                                          # Warriors
+    9: (2, ["Draymond Green", "Jimmy Butler", "Yaxel Lendeborg"]),                                          # Warriors
     26: (2, ["Keyonte George", "Darryn Peterson", "Jaren Jackson Jr.", "Lauri Markkanen"]),  # Jazz
     12: (2, ["Darius Garland", "Brandon Ingram", "Keaton Wagler"]),                      # Clippers
     23: (2, ["Domantas Sabonis", "Darius Acuff"]),                                       # Kings
@@ -111,7 +111,7 @@ NBA_TIER2 = {
     17: (2, ["Michael Porter Jr.", "Julius Randle", "Mikel Brown Jr.", "Egor Demin"]),   # Nets
     3: (3, ["Zion Williamson", "Trey Murphy III", "Herbert Jones", "Dejounte Murray", "Derik Queen"]),  # Pelicans
     15: (2, ["Tyler Herro", "Myles Turner", "Brayden Burries"]),                         # Bucks
-    1: (3, ["CJ McCollum", "Kingston Flemings", "Onyeka Okongwu", "Luguentz Dort",
+    1: (3, ["CJ McCollum", "Aaron Wiggins", "Onyeka Okongwu", "Dyson Daniels",
             "Nickeil Alexander-Walker"]),                                                 # Hawks
     4: (2, ["Norman Powell", "Josh Giddey", "Matas Buzelis"]),                           # Bulls
     21: (2, ["Dillon Brooks", "Jalen Green", "Miles Bridges"]),                          # Suns
@@ -152,11 +152,11 @@ NBA_RETURN_GAMES = [
 NBA_STAR_VISITS = [
     (3945274, "Luka", 13, 6, "Luka in Dallas"),   # Lakers @ Mavericks while Luka is a Laker
 ]
-# and every game between two teams that are currently top seeds in their
-# conference (re-checked every run as standings change): top-4 vs top-4 from
-# December 1, widening to top-6 vs top-6 from December 26.
+# and every game between two teams that are currently top-6 seeds in their
+# conference, from November 17 on (re-checked every run as standings change).
+# Seeds show on NBA titles from the same date.
 # ((month, day) the tier starts, top N seeds)
-NBA_SEED_TIERS = [((12, 1), 4), ((12, 26), 6)]
+NBA_SEED_TIERS = [((11, 17), 6)]
 NBA_TOP_SEEDS = max(n for _, n in NBA_SEED_TIERS)
 NBA_CHRISTMAS = True   # every Christmas Day game
 NBA_LOCAL_TV = "League Pass"
