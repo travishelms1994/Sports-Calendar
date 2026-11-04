@@ -151,10 +151,14 @@ NBA_STAR_VISITS = [
 ]
 # and every game between two teams that are currently top-6 seeds in their
 # conference (re-checked every run as standings change): top-6 vs top-6 from
-# November 17, widening to top-8 vs top-8 from January 1. Seeds show on NBA
-# titles from Nov 17 (#1-6, then #1-8 from Jan 1).
+# November 17, widening to top-8 vs top-8 from January 1. Only games in the next
+# NBA_SEED_WINDOW_DAYS are added, so far-off games don't come and go while the
+# standings move.
 # ((month, day) the tier starts, top N seeds)
 NBA_SEED_TIERS = [((11, 17), 6), ((1, 1), 8)]
+NBA_SEED_WINDOW_DAYS = 28
+# Seeds shown on NBA titles, all season: #1-6 on games through Dec 31, #1-8 from Jan 1.
+NBA_SEED_DISPLAY_TIERS = [((7, 1), 6), ((1, 1), 8)]
 NBA_TOP_SEEDS = max(n for _, n in NBA_SEED_TIERS)
 NBA_CHRISTMAS = True   # every Christmas Day game
 NBA_LOCAL_TV = "League Pass"
@@ -1570,10 +1574,10 @@ def nba_season():
     return TODAY.year + 1 if TODAY.month >= 7 else TODAY.year   # 2026-27 season = 2027
 
 
-def nba_seed_limit(day):
-    """How many top seeds count on `day`: 0 before Dec 1, 4 through Dec 25, 6 from Dec 26."""
+def nba_seed_limit(day, tiers=None):
+    """How many top seeds count on `day` under `tiers` (default: the matchup tiers)."""
     season = nba_season()
-    tiers = [(date(season - 1 if m >= 7 else season, m, d), n) for (m, d), n in NBA_SEED_TIERS]
+    tiers = [(date(season - 1 if m >= 7 else season, m, d), n) for (m, d), n in (tiers or NBA_SEED_TIERS)]
     return max((n for start, n in tiers if day >= start), default=0)
 
 
@@ -1581,15 +1585,15 @@ def nba_current_seeds():
     """{team id: "#1W"} for the current top seeds, once the first seed tier has started."""
     global _NBA_SEEDS
     if _NBA_SEEDS is None:
-        _NBA_SEEDS = nba_seeds(nba_season()) if nba_seed_limit(TODAY) else {}
+        _NBA_SEEDS = nba_seeds(nba_season()) if nba_seed_limit(TODAY, NBA_SEED_DISPLAY_TIERS) else {}
     return _NBA_SEEDS
 
 
-def nba_seed(team_id, day):
-    """A team's seed number if it counts for a game on `day` (top 4 / top 6), else None."""
+def nba_seed(team_id, day, tiers=None):
+    """A team's seed number if it counts for a game on `day` under `tiers`, else None."""
     label = nba_current_seeds().get(team_id)
     number = int(re.match(r"#(\d+)", label).group(1)) if label else None
-    return number if number and number <= nba_seed_limit(day) else None
+    return number if number and number <= nba_seed_limit(day, tiers) else None
 
 
 def nba_seeded_matchup(ev):
@@ -1603,7 +1607,7 @@ def nba_seeded_matchup(ev):
 
     def name(c):
         tid = (c.get("team") or {}).get("id")
-        return f"{seeds[tid]} {_team_name(c)}" if nba_seed(tid, day) else _team_name(c)
+        return f"{seeds[tid]} {_team_name(c)}" if nba_seed(tid, day, NBA_SEED_DISPLAY_TIERS) else _team_name(c)
 
     sep = "vs" if comp.get("neutralSite") else "@"
     return f"{name(side['away'])} {sep} {name(side['home'])}"
@@ -1699,7 +1703,8 @@ def nba_regular_season():
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            top_matchup = all(nba_seed(i, game_day(ev)) for i in ids)
+            in_window = game_day(ev) <= TODAY + timedelta(days=NBA_SEED_WINDOW_DAYS)
+            top_matchup = in_window and all(nba_seed(i, game_day(ev)) for i in ids)
             arena, place = venues.get(team_id, (None, ""))
             at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
             early = set(ids) <= early_group and len(set(ids)) == 2 and game_day(ev) <= early_until
