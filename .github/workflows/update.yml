@@ -7,6 +7,13 @@ on:
   # (which also keeps it right across daylight-time changes).
   schedule:
     - cron: "30 * * * *"
+    # College Football Playoff rankings: an extra update right when each ESPN
+    # rankings show ends (times below are UTC). UPDATE EACH SEASON.
+    - cron: "30 2 11 11 *"   # Tue Nov 10, show 8:00-8:30 PM CT
+    - cron: "30 2 18 11 *"   # Tue Nov 17, show 8:00-8:30 PM CT
+    - cron: "0 1 25 11 *"    # Tue Nov 24, show 6:30-7:00 PM CT
+    - cron: "30 0 2 12 *"    # Tue Dec 1, show 6:00-6:30 PM CT
+    - cron: "0 20 6 12 *"    # Sun Dec 6, Selection Day show 11 AM-2 PM CT (final rankings)
   push:
     branches: [main]
   workflow_dispatch:        # "Run workflow" button on the Actions tab
@@ -30,9 +37,10 @@ jobs:
       - id: check
         env:
           EVENT: ${{ github.event_name }}
+          CRON: ${{ github.event.schedule }}
         run: |
           go=true
-          if [ "$EVENT" = "schedule" ]; then
+          if [ "$EVENT" = "schedule" ] && [ "$CRON" = "30 * * * *" ]; then
             # The Central hour this run was scheduled for (runs start up to ~an hour late)
             hour=$(TZ=America/Chicago date -d "-30 min" +%H)
             case "$hour" in

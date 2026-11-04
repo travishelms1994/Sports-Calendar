@@ -1032,7 +1032,9 @@ def cfb_ranks():
     """{team id: rank} for college football. The AP poll is locked in each Sunday at
     2:00 PM CT (saved as cfb_ranks.json so the rest of the week reuses it). Once the
     CFP committee rankings come out each Tuesday, they're used until the next Sunday
-    2:00 PM, when the new AP poll takes over."""
+    2:00 PM, when the new AP poll takes over. The final CFP rankings (Selection
+    Day, a Sunday in December) are locked for the rest of the season: bowls,
+    the playoff and the title game."""
     global _CFB_RANKS, CFB_RANK_SOURCE, CFB_RANK_SAVE
     if _CFB_RANKS is not None:
         return _CFB_RANKS
@@ -1049,16 +1051,31 @@ def cfb_ranks():
     def this_season(poll):
         return poll and (poll.get("season") or {}).get("year") == season
 
-    cfp = next((p for p in polls if p.get("type") == "cfp"), None)
-    if this_season(cfp) and parse_espn_date(cfp["date"]) >= sunday:
-        _CFB_RANKS, CFB_RANK_SOURCE = top25(cfp), f"CFP rankings ({cfp['date'][:10]})"
-        return _CFB_RANKS
-
-    week_of = sunday.strftime("%Y-%m-%d %H:%M")
     try:
         saved = fetch_json(f"{SITE_URL}/cfb_ranks.json", retries=1)
     except (RuntimeError, ValueError):
         saved = {}
+    cfp = next((p for p in polls if p.get("type") == "cfp"), None)
+
+    # Final CFP rankings: released on Selection Day, a Sunday (the weekly ones
+    # come out Tuesdays). Once out, they stay for the rest of the season.
+    if this_season(cfp) and parse_espn_date(cfp["date"]).astimezone(CENTRAL).weekday() == 6:
+        _CFB_RANKS = top25(cfp)
+        CFB_RANK_SOURCE = f"final CFP rankings ({cfp['date'][:10]}, locked for bowls and the playoff)"
+        CFB_RANK_SAVE = {"final_cfp": season, "date": cfp["date"][:10], "ranks": _CFB_RANKS}
+        return _CFB_RANKS
+    if saved.get("final_cfp") == season and saved.get("ranks"):
+        _CFB_RANKS = saved["ranks"]
+        CFB_RANK_SOURCE = f"final CFP rankings ({saved.get('date')}, locked for bowls and the playoff)"
+        CFB_RANK_SAVE = saved
+        return _CFB_RANKS
+
+    if this_season(cfp) and parse_espn_date(cfp["date"]) >= sunday:
+        _CFB_RANKS, CFB_RANK_SOURCE = top25(cfp), f"CFP rankings ({cfp['date'][:10]})"
+        CFB_RANK_SAVE = saved or None   # keep this week's locked AP poll on file
+        return _CFB_RANKS
+
+    week_of = sunday.strftime("%Y-%m-%d %H:%M")
     if saved.get("week_of") == week_of and saved.get("ranks"):
         _CFB_RANKS, CFB_RANK_SOURCE = saved["ranks"], f"AP poll locked {week_of} CT"
         CFB_RANK_SAVE = saved
