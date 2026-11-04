@@ -124,12 +124,14 @@ NBA_ALSO_OFF = {
     20: [["Tyrese Maxey", "Jaylen Brown"]],   # 76ers: both Maxey and Brown out
 }
 # Star-and-depth rules that REPLACE a team's Tier 1 / Tier 2:
-# team id -> (star, core pair, bench, bench needed playing when the star is out)
+# team id -> (star, core pair, bench, bench needed when the star is out,
+#             bench needed when the star plays but both core are out)
 #   star out:                   stays only if both core play AND that many bench play
-#   star plays, both core out:  stays only if ALL the bench plays
+#   star plays, both core out:  stays only if that many bench play
 NBA_STAR_DEPTH = {
     25: ("Shai Gilgeous-Alexander", ["Jalen Williams", "Chet Holmgren"],
-         ["Alex Caruso", "Cason Wallace", "Ajay Mitchell", "Isaiah Hartenstein"], 2),   # Thunder
+         ["Alex Caruso", "Cason Wallace", "Ajay Mitchell", "Isaiah Hartenstein", "Jared McCain",
+          "Aday Mara"], 3, 4),                                                       # Thunder
 }
 # Return games: the player's first regular-season game AT the host's arena that he
 # actually plays in. If he's listed Out for it (or didn't play), the next visit counts,
@@ -1644,7 +1646,7 @@ def nba_injury_reason(event):
         team = int(tid) if tid and tid.isdigit() else None
         out = lambda names: [a for a in nba_listed_ids(team, names) if nba_availability(a, event.day, team) == "out"]
         if team in NBA_STAR_DEPTH:   # replaces this team's Tier 1 / Tier 2
-            star, core, bench, bench_needed = NBA_STAR_DEPTH[team]
+            star, core, bench, bench_needed, bench_needed_no_core = NBA_STAR_DEPTH[team]
             star_ids = nba_listed_ids(team, [star])
             bench_ids = nba_listed_ids(team, bench)
             bench_playing = len(bench_ids) - len(out(bench))
@@ -1652,8 +1654,8 @@ def nba_injury_reason(event):
                 if out(core) or bench_playing < bench_needed:
                     return (f"{star} out, and " + (f"{', '.join(_athlete_name(team, a) for a in out(core))} out"
                             if out(core) else f"only {bench_playing} of {len(bench)} bench playing"))
-            elif len(out(core)) == len(core) and bench_playing < len(bench_ids):
-                return f"{' and '.join(core)} out, and {', '.join(_athlete_name(team, a) for a in out(bench))} out"
+            elif len(out(core)) == len(core) and bench_playing < bench_needed_no_core:
+                return f"{' and '.join(core)} out, and only {bench_playing} of {len(bench)} bench playing"
             continue
         for group in NBA_ALSO_OFF.get(team, []):
             if len(nba_listed_ids(team, group)) == len(group) and len(out(group)) == len(group):
@@ -1672,7 +1674,7 @@ def nba_injury_reason(event):
 def _athlete_name(team, athlete):
     names = NBA_TIER1.get(team, []) + NBA_TIER2.get(team, (0, []))[1]
     if team in NBA_STAR_DEPTH:
-        star, core, bench, _ = NBA_STAR_DEPTH[team]
+        star, core, bench, *_ = NBA_STAR_DEPTH[team]
         names += [star] + core + bench
     return next((n for n in names if _NBA_ROSTERS[team].get(_player_key(n)) == athlete), athlete)
 
