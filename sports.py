@@ -560,6 +560,10 @@ OTHER_BANNERS = [
 # (FBSchedules usually posts times before ESPN does). ESPN's time wins once posted.
 FBSCHEDULES_TIMES = True
 FBSCHEDULES_DAYS_AHEAD = 14
+# A game with only a narrow kickoff window on FBSchedules ("3-4:15pm", "7 or 7:30pm")
+# is held at the start of the window, marked "(est.)", until the real time is posted.
+# Wider either/or slots ("3:30 or 7:30pm") stay "time TBA".
+FBSCHEDULES_WINDOW_MINUTES = 90
 
 TIME_OVERRIDES = [
     ("401858505", datetime(2026, 10, 31, 12, 30, tzinfo=ZoneInfo("America/Los_Angeles")), "Peacock",
@@ -2136,7 +2140,7 @@ def _cfb_team_names(team_id):
 
 
 def fbschedules_week(saturday):
-    """[(day, away, home, start or None, tv)] from FBSchedules' TV selections page
+    """[(day, away, home, start or None, tv, window end or None)] from FBSchedules' TV selections page
     for the week ending `saturday`. Empty if the page isn't there or can't be read."""
     url = (f"https://fbschedules.com/college-football-schedule-tv-selections-for-"
            f"{saturday:%B}-{saturday.day}-{saturday.year}/").lower()
@@ -2159,15 +2163,32 @@ def fbschedules_week(saturday):
             continue
         away, home, rest = game.groups()
         when, _, tv = rest.partition(",")
-        clock = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\w*", when.strip())
-        start = None
-        if clock:   # "3:30pm"; "TBA", "TBA 11/1" and "3:30 or 4:15pm" stay unset
+        when = when.strip()
+        at = lambda h, m: datetime(day.year, day.month, day.day, h, m, tzinfo=eastern)
+        clock = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap])\w*", when)
+        window = re.fullmatch(r"(\d{1,2})(?::(\d{2}))?\s*([ap]m?)?\s*(?:-|–|—|/|or)\s*"
+                              r"(\d{1,2})(?::(\d{2}))?\s*([ap])\w*", when)
+        start = window_end = None
+        if clock:   # "3:30pm"; "TBA" and "TBA 11/1" stay unset
             hour = int(clock.group(1)) % 12 + (12 if clock.group(3) == "p" else 0)
-            start = datetime(day.year, day.month, day.day, hour, int(clock.group(2) or 0), tzinfo=eastern)
+            start = at(hour, int(clock.group(2) or 0))
+        elif window:   # "3-4:15pm", "6-7pm", "7 or 7:30pm", "7/7:30pm"
+            h2 = int(window.group(4)) % 12 + (12 if window.group(6) == "p" else 0)
+            first = (window.group(3) or window.group(6))[0]
+            h1 = int(window.group(1)) % 12 + (12 if first == "p" else 0)
+            if h1 > h2 and not window.group(3):   # "11-12:30pm"
+                h1 -= 12
+            start, window_end = at(h1, int(window.group(2) or 0)), at(h2, int(window.group(5) or 0))
         tv = tv.strip()
-        tv = FBS_TV.get(tv, tv.replace("/", " · "))
-        games.append((day, _fbs_norm(away), _fbs_norm(home), start, tv))
+        tv = " / ".join(FBS_TV.get(t, t.replace("/", " · ")) for t in re.split(r"\s+or\s+", tv))
+        games.append((day, _fbs_norm(away), _fbs_norm(home), start, tv, window_end))
     return games
+
+
+def clock_ct(when):
+    """'2:00 PM' in Central time."""
+    t = when.astimezone(CENTRAL)
+    return f"{t.hour % 12 or 12}:{t.minute:02d} {'PM' if t.hour >= 12 else 'AM'}"
 
 
 def fill_times_from_fbschedules(events):
@@ -2186,15 +2207,24 @@ def fill_times_from_fbschedules(events):
         listed = fbschedules_week(saturday)
         for e in todo:
             names = [_cfb_team_names(t) for t in e.team_ids]
-            for day, away, home, start, tv in listed:
+            for day, away, home, start, tv, window_end in listed:
                 if day != e.day or not start or len(names) != 2:
                     continue
+                if window_end and window_end - start > timedelta(minutes=FBSCHEDULES_WINDOW_MINUTES):
+                    continue
                 if (away in names[0] and home in names[1]) or (away in names[1] and home in names[0]):
-                    e.start, e.end = start, None
-                    e.title = e.title.replace(" (time TBA)", "")
+                    if window_end:   # held at the start of the window, long enough to cover a late kickoff
+                        e.end = window_end + timedelta(hours=e.duration_hours)
+                        e.title = e.title.replace(" (time TBA)", " (est.)")
+                        note = (f"Kickoff window {clock_ct(start)}–{clock_ct(window_end)} CT (FBSchedules); "
+                                "held at the earliest time until the exact kickoff is announced.")
+                    else:
+                        e.end = None
+                        e.title = e.title.replace(" (time TBA)", "")
+                        note = "Kickoff time from FBSchedules (ESPN still lists it as TBA)."
+                    e.start = start
                     if tv and e.location.endswith("TV TBA"):
                         e.location = tv_label([tv])
-                    note = "Kickoff time from FBSchedules (ESPN still lists it as TBA)."
                     e.description = f"{e.description}\n{note}" if e.description else note
                     filled += 1
                     break
