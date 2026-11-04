@@ -151,9 +151,9 @@ NBA_STAR_VISITS = [
 ]
 # and every game between two teams that are currently top-6 seeds in their
 # conference (re-checked every run as standings change): top-6 vs top-6 from
-# November 17, widening to top-8 vs top-8 from January 1. Only games in the next
-# NBA_SEED_WINDOW_DAYS are added, so far-off games don't come and go while the
-# standings move.
+# November 17, widening to top-8 vs top-8 from January 1. Only games in the
+# NBA_SEED_WINDOW_DAYS after the later of today and Nov 17 are added, so
+# far-off games don't come and go while the standings move.
 # ((month, day) the tier starts, top N seeds)
 NBA_SEED_TIERS = [((11, 17), 6), ((1, 1), 8)]
 NBA_SEED_WINDOW_DAYS = 28
@@ -1689,6 +1689,10 @@ def nba_regular_season():
     season = nba_season()
     seeds = nba_current_seeds()
     seeded_matchup = nba_seeded_matchup
+    # Seed matchups fill the 4 weeks after the later of today and the rule's start
+    # (Nov 17), so before Nov 17 the window reaches 4 weeks past Nov 17.
+    first_tier = min(date(season - 1 if m >= 7 else season, m, d) for (m, d), _ in NBA_SEED_TIERS)
+    window_end = max(TODAY, first_tier) + timedelta(days=NBA_SEED_WINDOW_DAYS)
     rivalries = {frozenset((str(a), str(b))) for a, b in NBA_RIVALRIES}
     venues = {team: (arena, place) for team, arena, place in NBA_VENUE_GAMES}
     early_group = {str(t) for t in NBA_EARLY_GROUP}
@@ -1703,7 +1707,7 @@ def nba_regular_season():
         for ev in data.get("events", []):
             comp = ev["competitions"][0]
             ids = [(c.get("team") or {}).get("id") for c in comp.get("competitors", [])]
-            in_window = game_day(ev) <= TODAY + timedelta(days=NBA_SEED_WINDOW_DAYS)
+            in_window = game_day(ev) <= window_end
             top_matchup = in_window and all(nba_seed(i, game_day(ev)) for i in ids)
             arena, place = venues.get(team_id, (None, ""))
             at_venue = arena and arena in ((comp.get("venue") or {}).get("fullName") or "")
