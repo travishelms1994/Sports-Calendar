@@ -42,21 +42,18 @@ PRO_TEAMS = {
 NBA_RIVALRIES = [
     (25, 24),   # Thunder - Spurs
     (24, 18),   # Spurs - Knicks
-    (25, 18),   # Thunder - Knicks
     (20, 2),    # 76ers - Celtics
     (18, 20),   # Knicks - 76ers
     (2, 18),    # Celtics - Knicks
     (13, 2),    # Lakers - Celtics
-    (20, 24),   # 76ers - Spurs
-    (20, 25),   # 76ers - Thunder
 ]
 # Early-season matchups: every game between any two of these teams, but only
-# through December 25 (after that the top-6 seed rule takes over).
+# through November 16 (from Nov 17 the top-6 seed rule takes over).
 NBA_EARLY_GROUP = [
     25, 24, 7, 16, 13,              # Thunder, Spurs, Nuggets, Timberwolves, Lakers
     18, 20, 2, 8, 5, 14, 28,        # Knicks, 76ers, Celtics, Pistons, Cavaliers, Heat, Raptors
 ]
-NBA_EARLY_GROUP_UNTIL = (12, 25)   # (month, day), last day included
+NBA_EARLY_GROUP_UNTIL = (11, 16)   # (month, day), last day included; top-6 seeds take over Nov 17
 # Injury rules (regular season only). A game comes off the calendar when, for
 # EITHER team, a Tier 1 star is out, or that team's Tier 2 threshold is met.
 # "Out" = listed Out or Doubtful (Questionable or better counts as playing),
@@ -153,10 +150,11 @@ NBA_STAR_VISITS = [
     (3945274, "Luka", 13, 6, "Luka in Dallas"),   # Lakers @ Mavericks while Luka is a Laker
 ]
 # and every game between two teams that are currently top-6 seeds in their
-# conference, from November 17 on (re-checked every run as standings change).
-# Seeds show on NBA titles from the same date.
+# conference (re-checked every run as standings change): top-6 vs top-6 from
+# November 17, widening to top-8 vs top-8 from January 1. Seeds show on NBA
+# titles from Nov 17 (#1-6, then #1-8 from Jan 1).
 # ((month, day) the tier starts, top N seeds)
-NBA_SEED_TIERS = [((11, 17), 6)]
+NBA_SEED_TIERS = [((11, 17), 6), ((1, 1), 8)]
 NBA_TOP_SEEDS = max(n for _, n in NBA_SEED_TIERS)
 NBA_CHRISTMAS = True   # every Christmas Day game
 NBA_LOCAL_TV = "League Pass"
