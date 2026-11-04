@@ -599,8 +599,10 @@ EMOJI = {
     "Olympics": "\U0001F3C5",           # medal
 }
 
-# Drop events that ended more than this many days ago
-# (1 = a 10/14 game is still there on 10/15 and gone on 10/16).
+# Roll-off: everything from earlier days is removed at the first update after
+# midnight Central (1:30 AM), so today's games, finished or not, stay up all day.
+# A multi-day banner stays until midnight after its last day.
+# KEEP_PAST_DAYS only sets how far back the score feeds are read.
 KEEP_PAST_DAYS = 1
 
 # =============================================================== sources
@@ -2198,13 +2200,16 @@ def main():
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
                march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, ufc_title_cards, other_banners]
-    cutoff = NOW - timedelta(days=KEEP_PAST_DAYS)
+    def last_day(e):
+        """The Central-time day an event happens on (its last day, for a banner)."""
+        return (e.end or e.start) if e.all_day else e.start.astimezone(CENTRAL).date()
+
     seen, events = set(), []
     for source in sources:
         found = source()  # any failure stops the run, so yesterday's file stays up
         kept = 0
         for e in found:
-            if e.uid in seen or e.last_moment() < cutoff:
+            if e.uid in seen or last_day(e) < TODAY:   # gone after midnight
                 continue
             seen.add(e.uid)
             emoji = EMOJI.get(e.categories[0]) if e.categories else None
