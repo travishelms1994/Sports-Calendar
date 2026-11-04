@@ -61,8 +61,8 @@ NBA_EARLY_GROUP_UNTIL = (12, 25)   # (month, day), last day included
 # EITHER team, a Tier 1 star is out, or that team's Tier 2 threshold is met.
 # "Out" = listed Out or Doubtful (Questionable or better counts as playing),
 # re-checked every run, so a game comes back if a player is upgraded.
-# These beat every other NBA rule except: Rockets games and the NBA Cup
-# semifinals and final are always kept. Names are matched to the team's ESPN
+# These beat every other NBA rule except: Rockets games, the NBA Cup
+# semifinals and final, and Spurs games in Austin are always kept. Names are matched to the team's ESPN
 # roster each run; a listed player who isn't on that roster any more doesn't
 # count, and a "check the NBA injury lists" warning goes on the calendar.
 # Tier 1: team id -> stars (any one out takes the game off)
@@ -1809,7 +1809,8 @@ def nba_regular_season():
     kept = []
     for e in events:
         cup_final_four = "NBA Cup Semifinal" in e.title or "NBA Cup Final" in e.title
-        reason = None if cup_final_four else nba_injury_reason(e)
+        venue_game = any(f"({place})" in e.title for _, _, place in NBA_VENUE_GAMES)   # Spurs in Austin
+        reason = None if cup_final_four or venue_game else nba_injury_reason(e)
         if reason:
             NBA_INJURY_REMOVED.append((e, reason))
         else:
