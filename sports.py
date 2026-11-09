@@ -2180,7 +2180,7 @@ def fbschedules_week(saturday):
                 h1 -= 12
             start, window_end = at(h1, int(window.group(2) or 0)), at(h2, int(window.group(5) or 0))
         tv = tv.strip()
-        tv = " / ".join(FBS_TV.get(t, t.replace("/", " · ")) for t in re.split(r"\s+or\s+", tv))
+        tv = " / ".join(FBS_TV.get(t, t.replace("/", " · ")) for t in re.split(r"\s*,\s*|\s+or\s+", tv) if t)
         games.append((day, _fbs_norm(away), _fbs_norm(home), start, tv, window_end))
     return games
 
