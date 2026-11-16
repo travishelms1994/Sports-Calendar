@@ -2180,7 +2180,12 @@ def fbschedules_week(saturday):
                 h1 -= 12
             start, window_end = at(h1, int(window.group(2) or 0)), at(h2, int(window.group(5) or 0))
         tv = tv.strip()
-        tv = " / ".join(FBS_TV.get(t, t.replace("/", " · ")) for t in re.split(r"\s*,\s*|\s+or\s+", tv) if t)
+        # "ESPN/2/ACCN" and "ESPN2/U/CBSSN" are options (ESPN, ESPN2 or ACCN); "CBS/Paramount+" is a simulcast
+        tv = re.sub(r"(?<=/)(2|U)(?=/|$)", lambda m: "ESPN" + m.group(1), tv)
+        options = [t for t in re.split(r"\s*,\s*|\s+or\s+", tv) if t]
+        if len(options) == 1 and re.search(r"/ESPN(2|U)|^ESPN(2|U)?/", options[0]):
+            options = options[0].split("/")
+        tv = " / ".join(FBS_TV.get(t, t.replace("/", " · ")) for t in options)
         games.append((day, _fbs_norm(away), _fbs_norm(home), start, tv, window_end))
     return games
 
