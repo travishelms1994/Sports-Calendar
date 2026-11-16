@@ -1,12 +1,13 @@
 name: Update calendars
 
 on:
-  # Central time: 1:30, 5:30 and 9:30 AM, then every hour 12:30 PM - 11:30 PM.
-  # GitHub schedules run on UTC, so this fires every hour at :30 and the
-  # "when" job below lets through only the Central-time hours wanted
-  # (which also keeps it right across daylight-time changes).
+  # GitHub runs schedules on a best-effort basis and drops many triggers when it's
+  # busy (in Nov 2026 only 2-4 of 24 hourly triggers a day were firing), so there
+  # are three triggers an hour and every one that fires rebuilds the calendar.
   schedule:
+    - cron: "10 * * * *"
     - cron: "30 * * * *"
+    - cron: "50 * * * *"
     # College Football Playoff rankings: an extra update right when each ESPN
     # rankings show ends (times below are UTC). UPDATE EACH SEASON.
     - cron: "30 2 11 11 *"   # Tue Nov 10, show 8:00-8:30 PM CT
@@ -29,31 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  when:
-    runs-on: ubuntu-latest
-    outputs:
-      go: ${{ steps.check.outputs.go }}
-    steps:
-      - id: check
-        env:
-          EVENT: ${{ github.event_name }}
-          CRON: ${{ github.event.schedule }}
-        run: |
-          go=true
-          if [ "$EVENT" = "schedule" ] && [ "$CRON" = "30 * * * *" ]; then
-            # The Central hour this run was scheduled for (runs start up to ~an hour late)
-            hour=$(TZ=America/Chicago date -d "-30 min" +%H)
-            case "$hour" in
-              01|05|09|12|13|14|15|16|17|18|19|20|21|22|23) go=true ;;
-              *) go=false ;;
-            esac
-            echo "Scheduled for Central hour $hour"
-          fi
-          echo "go=$go" >> "$GITHUB_OUTPUT"
-
   build:
-    needs: when
-    if: needs.when.outputs.go == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
