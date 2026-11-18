@@ -1364,6 +1364,13 @@ def _soccer_round(slug):
             "semifinals": "Semifinal", "final": "Final"}.get(slug, slug.replace("-", " ").title())
 
 
+def matchup_first(event, label):
+    """Matchup alone in the title (so it's readable on the calendar) and the event
+    name, e.g. "Players Era 8 Semifinal", as the first line of the notes."""
+    event.description = f"{label}\n{event.description}" if event.description else label
+    return event
+
+
 def european_soccer():
     events, seen = [], set()
 
@@ -1382,7 +1389,11 @@ def european_soccer():
     def add(ev, league, title, category, why=""):
         if ev["id"] not in seen:
             seen.add(ev["id"])
-            e = espn_event(ev, f"soccer/{league}", title, 2.0, category)
+            label, _, matchup = title.partition(": ")
+            if label.startswith("Champions League") and matchup:
+                e = matchup_first(espn_event(ev, f"soccer/{league}", matchup, 2.0, category), label)
+            else:
+                e = espn_event(ev, f"soccer/{league}", title, 2.0, category)
             e.rule = why  # which rule picked the game (for checking the list; not shown)
             default = SOCCER_LEAGUES.get(league, {}).get("tv") or (UCL_TV if league == "uefa.champions" else "")
             if "TBA" in e.location:
@@ -1953,7 +1964,10 @@ def early_season_tournaments():
             else:
                 continue
             matchup = _matchup(comp, rank=True, use_location=True)[0]
-            events.append(espn_event(ev, league, f"{label}: {matchup}", 2.0, "CBB Top 25"))
+            if _teams_unknown(matchup) or "TBD" in matchup:
+                events.append(espn_event(ev, league, label, 2.0, "CBB Top 25"))
+            else:
+                events.append(matchup_first(espn_event(ev, league, matchup, 2.0, "CBB Top 25"), label))
     return events
 
 
