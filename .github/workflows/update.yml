@@ -8,13 +8,12 @@ on:
     - cron: "10 * * * *"
     - cron: "30 * * * *"
     - cron: "50 * * * *"
-    # College Football Playoff rankings: an extra update right when each ESPN
+    # College Football Playoff rankings: an extra update 2 minutes after each ESPN
     # rankings show ends (times below are UTC). UPDATE EACH SEASON.
-    - cron: "30 2 11 11 *"   # Tue Nov 10, show 8:00-8:30 PM CT
-    - cron: "30 2 18 11 *"   # Tue Nov 17, show 8:00-8:30 PM CT
-    - cron: "0 1 25 11 *"    # Tue Nov 24, show 6:30-7:00 PM CT
-    - cron: "30 0 2 12 *"    # Tue Dec 1, show 6:00-6:30 PM CT
-    - cron: "0 20 6 12 *"    # Sun Dec 6, Selection Day show 11 AM-2 PM CT (final rankings)
+    - cron: "32 2 18 11 *"   # Tue Nov 17, show 8:00-8:30 PM CT -> 8:32 PM
+    - cron: "2 1 25 11 *"    # Tue Nov 24, show 6:30-7:00 PM CT -> 7:02 PM
+    - cron: "32 0 2 12 *"    # Tue Dec 1, show 6:00-6:30 PM CT -> 6:32 PM
+    - cron: "2 20 6 12 *"    # Sun Dec 6, Selection Show 11 AM-2 PM CT -> 2:02 PM (final rankings)
   push:
     branches: [main]
   workflow_dispatch:        # "Run workflow" button on the Actions tab
