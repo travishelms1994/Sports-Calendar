@@ -1815,13 +1815,15 @@ def nba_regular_season():
             matchup = espn_matchup_title(ev)
             title = label if _teams_unknown(matchup) else f"{label}: {seeded_matchup(ev)}"
             events.append(espn_event(ev, league, title, 2.5, "NBA", local_tv=NBA_LOCAL_TV))
-    # Injury rules beat everything above, quarterfinals included (the NBA Cup semifinals/final are kept;
+    # Injury rules beat everything above, quarterfinals included (the NBA Cup semifinals/final,
+    # Christmas games and Spurs games in Austin are kept;
     # Rockets games come from the Rockets rule, which these don't touch).
     kept = []
     for e in events:
         cup_final_four = "NBA Cup Semifinal" in e.title or "NBA Cup Final" in e.title
         venue_game = any(f"({place})" in e.title for _, _, place in NBA_VENUE_GAMES)   # Spurs in Austin
-        reason = None if cup_final_four or venue_game else nba_injury_reason(e)
+        christmas = "(Christmas)" in e.title   # always kept
+        reason = None if cup_final_four or venue_game or christmas else nba_injury_reason(e)
         if reason:
             NBA_INJURY_REMOVED.append((e, reason))
         else:
