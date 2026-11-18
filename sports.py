@@ -513,6 +513,15 @@ UFC_DAYS_AHEAD = 180
 
 # Other fixed all-day banners. ADD NEXT SEASON'S DATES HERE once they're announced.
 # (name, first day, last day, notes)
+# College Football Playoff rankings shows on ESPN, Central time (start, minutes, title).
+# Verified on FBSchedules' and NCAA.com's 2026 release schedules. UPDATE EACH SEASON.
+CFP_SHOWS = [
+    (datetime(2026, 11, 17, 20, 0), 30, "CFP Rankings Show"),
+    (datetime(2026, 11, 24, 18, 30), 30, "CFP Rankings Show"),
+    (datetime(2026, 12, 1, 18, 0), 30, "CFP Rankings Show"),
+    (datetime(2026, 12, 6, 11, 0), 180, "CFP Selection Show (final rankings, 12-team bracket)"),
+]
+
 OTHER_BANNERS = [
     # Soccer 2027
     ("Gold Cup", date(2027, 6, 17), date(2027, 7, 11), "CONCACAF Gold Cup"),
@@ -2094,6 +2103,12 @@ def ufc_title_cards():
     return events
 
 
+def cfp_shows():
+    return [Event(uid=f"cfp-show-{start:%Y%m%d}", title=title, start=start.replace(tzinfo=CENTRAL),
+                  duration_hours=minutes / 60, location=tv_label(["ESPN"]), categories=["CFP"])
+            for start, minutes, title in CFP_SHOWS]
+
+
 def other_banners():
     def category(name):
         for key, cat in (("NFL Draft", "NFL"), ("NBA Draft", "NBA"), ("NBA All-Star", "NBA"), ("March Madness", "March Madness"),
@@ -2249,7 +2264,7 @@ def main():
     # (e.g. an Astros ALCS game keeps its "ALCS Game 3" title, and a Texans
     # Thursday game is filed under the Texans rather than the NFL).
     sources = [mlb_postseason, nba_postseason, nhl_postseason, pro_team_games, nba_regular_season, nfl_games, college_football,
-               march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, ufc_title_cards, other_banners]
+               march_basketball, early_season_tournaments, college_basketball, college_baseball_postseason, usmnt, european_soccer, tcu_games, golf_banners, tennis, horse_races, ufc_title_cards, cfp_shows, other_banners]
     def last_day(e):
         """The Central-time day an event happens on (its last day, for a banner)."""
         return (e.end or e.start) if e.all_day else e.start.astimezone(CENTRAL).date()
