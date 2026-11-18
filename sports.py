@@ -398,16 +398,18 @@ def _all_pairs(teams):
     return [(a, b) for i, a in enumerate(teams) for b in teams[i + 1:]]
 
 
-# Basketball groups: every regular-season game between any two teams in a group.
-CBB_GROUPS = [
-    # Big time programs (Big Matchups): North Carolina, Duke, Kentucky, Kansas, UConn, UCLA,
-    # Michigan State, Villanova, Indiana, Louisville, Arizona, Gonzaga, Syracuse, Florida, Michigan
-    [153, 150, 96, 2305, 41, 26, 127, 222, 84, 97, 12, 2250, 183, 57, 130],
+# Rivalry groups: every game between any two teams in a group counts as a rivalry.
+CBB_RIVALRY_GROUPS = [
     [2168, 2752, 2132, 194],    # Ohio: Dayton, Xavier, Cincinnati, Ohio State
     [235, 238, 2633],           # Tennessee: Memphis, Vanderbilt, Tennessee
 ]
-for _group in CBB_GROUPS:
+for _group in CBB_RIVALRY_GROUPS:
     CBB_RIVALRIES += _all_pairs(_group)
+# Big programs: every game between two of them, and every game where one plays a
+# team in the current AP Top 25. North Carolina, Duke, Kentucky, Kansas, UConn, UCLA,
+# Michigan State, Villanova, Indiana, Louisville, Arizona, Gonzaga, Syracuse, Florida, Michigan
+CBB_BIG_PROGRAMS = [153, 150, 96, 2305, 41, 26, 127, 222, 84, 97, 12, 2250, 183, 57, 130]
+CBB_RIVALRIES += _all_pairs(CBB_BIG_PROGRAMS)
 # Power Four conference title games, always included.
 CFB_TITLE_GAMES = ("ACC Championship", "Big 12 Championship", "Big Ten Championship", "SEC Championship")
 
@@ -1950,7 +1952,8 @@ def college_basketball():
     if not CBB_TOP25_MATCHUPS:
         return []
     season = TODAY.year + 1 if TODAY.month >= 7 else TODAY.year  # 2026-27 season = 2027
-    return top25_matchups("basketball/mens-college-basketball", season, "CBB Top 25", 2.0, CBB_RIVALRIES)
+    return top25_matchups("basketball/mens-college-basketball", season, "CBB Top 25", 2.0, CBB_RIVALRIES,
+                          vs_ranked=CBB_BIG_PROGRAMS)
 
 
 def golf_banners():
