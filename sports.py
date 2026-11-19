@@ -2338,6 +2338,21 @@ def main():
     if moved:
         print(f"{'TBA at 11:58 PM':16} {moved:4} games on week-banner Saturdays")
 
+    # Matchup first: "🏀 NBA Cup Quarterfinal: Knicks @ Celtics" -> "🏀 Knicks @ Celtics",
+    # with "NBA Cup Quarterfinal" as the first line of the notes, so the teams are what
+    # shows on the calendar. Done last, after every rule that reads the titles.
+    flipped = 0
+    for e in events:
+        head, _, rest = e.title.partition(" ")
+        if head.isalnum() or e.title.startswith("⚠️"):
+            continue
+        label, sep, matchup = rest.partition(": ")
+        if sep and re.search(r" vs\.? | @ |/", matchup):
+            e.title = f"{head} {matchup}"
+            matchup_first(e, label)
+            flipped += 1
+    print(f"{'Matchup first':16} {flipped:4} titles")
+
     if len(events) < 50:
         raise SystemExit(f"Only {len(events)} events; something is wrong, not publishing.")
     write_ics(os.path.join(out_dir, "sports.ics"), events, CALENDAR_NAME,
